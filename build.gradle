@@ -1,0 +1,88 @@
+plugins {
+    id 'fabric-loom' version "${loom_version}"
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenLocal()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+
+    // Mojang mappings, not Yarn: every class name in this project is the
+    // official one (net.minecraft.client.gui.screens.inventory.*).
+    mappings loom.officialMojangMappings()
+
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+    // Flashback is not on Maven and is licensed ARR (all rights reserved).
+    // Compile against it only - never bundle it. Drop the jar in libs/.
+    //
+    // EVERY jar in libs/ is compiled against, regardless of name. Ant-style
+    // globbing is case-sensitive, so any name-based pattern is a guess that
+    // can silently match nothing - and then the build fails with hundreds of
+    // "cannot find symbol" errors that look like a code problem rather than a
+    // missing jar. Taking the whole directory removes that class of failure
+    // completely.
+    //
+    // Any Flashback version works: the APIs this mod uses
+    // (writeCustomSnapshot, submitCustomTask, ActionRegistry,
+    // getSpectatingPlayer) have been stable since 0.39.0.
+    def flashbackJars = fileTree(dir: 'libs', include: '*.jar')
+    modCompileOnly flashbackJars
+
+    // modCompileOnly covers compiling but does NOT put Flashback in the dev
+    // runtime, so runClient would start without it. This adds it for local
+    // runs only - still excluded from the produced jar.
+    // Comment out if you run from a real game install instead.
+    if (!flashbackJars.isEmpty()) {
+        modLocalRuntime flashbackJars
+    } else {
+        // Fail loudly and early. Without this, a missing jar surfaces as a
+        // wall of unresolved-symbol errors with no hint of the real cause.
+        throw new GradleException("No Flashback jar found in libs/. "
+                + "Download it from Modrinth / CurseForge and put the jar in that folder. "
+                + "Any filename works, the whole directory is compiled against.")
+    }
+
+    // Spatial GUI is intentionally NOT a dependency: SpatialGuiCompat reaches
+    // it by reflection so this mod still builds for versions where it exists.
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+    it.options.encoding = 'UTF-8'
+}
+
+jar {
+    from 'LICENSE'
+}
+
+// Verbose logging without a rebuild: add -PreplayuiDebug to the build/run task
+tasks.withType(JavaExec).configureEach {
+    if (project.hasProperty('replayuiDebug')) {
+        jvmArgs '-Dreplayui.debug=true'
+    }
+}

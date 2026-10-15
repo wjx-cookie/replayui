@@ -1,0 +1,64 @@
+# ============================================================
+# Build output
+# ============================================================
+.gradle/
+build/
+out/
+classes/
+bin/
+
+# Loom's own caches
+.loom-cache/
+build/loom-cache/
+**/build/loom-cache/
+
+# ============================================================
+# IDE
+# ============================================================
+.idea/
+*.iml
+*.ipr
+*.iws
+*.launch
+.settings/
+.project
+.classpath
+.factorypath
+
+.vscode/
+*.code-workspace
+
+# Eclipse / macOS / Windows noise
+.metadata/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================
+# Game run directories (contain worlds, logs, saves — huge)
+# ============================================================
+run/
+runClient/
+runServer/
+runs/
+
+# ============================================================
+# Redistributable-restricted: Flashback is ARR (all rights reserved).
+# The jar is required locally to compile, but must never be pushed.
+# See libs/README.txt for how to obtain it.
+#
+# The whole directory is excluded, not just *.jar / *.zip: build.gradle now
+# compiles against every jar in there regardless of name, and gitignore
+# matching is case-sensitive, so any extension-based pattern (libs/*.jar)
+# silently misses things like a .JAR or a renamed download. Ignoring
+# everything and re-including the README removes that guesswork entirely.
+# ============================================================
+libs/*
+!libs/README.txt
+
+# ============================================================
+# Local-only files
+# ============================================================
+*.log
+*.lck
+local.properties

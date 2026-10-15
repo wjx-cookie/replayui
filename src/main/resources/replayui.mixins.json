@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "package": "com.replayui.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "client": [
+    "MenuTypeAccessor",
+    "MouseHandlerAccessor",
+    "MixinRecorder",
+    "MixinAbstractContainerScreen",
+    "MixinLocalPlayerYaw"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

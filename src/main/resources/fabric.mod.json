@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "replayui",
+  "version": "${version}",
+  "name": "Replay UI",
+  "description": "Records container screens into Flashback replays and rebuilds them on playback.",
+  "authors": ["wjx-cookie"],
+  "license": "MIT",
+  "contact": {
+    "homepage": "https://github.com/wjx-cookie/replayui",
+    "sources": "https://github.com/wjx-cookie/replayui",
+    "issues": "https://github.com/wjx-cookie/replayui/issues"
+  },
+  "environment": "client",
+  "entrypoints": {
+    "main": ["com.replayui.ReplayUI"],
+    "client": ["com.replayui.ReplayUI"]
+  },
+  "mixins": ["replayui.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.15",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "flashback": ">=0.39.0"
+  }
+}
