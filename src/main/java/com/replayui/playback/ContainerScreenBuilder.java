@@ -6,13 +6,12 @@ import com.replayui.log.DebugLog;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
-
-import java.util.Optional;
 
 /**
  * Rebuilds a real container screen from recorded state.
@@ -59,30 +58,59 @@ public final class ContainerScreenBuilder {
             return null;
         }
 
-        AbstractContainerMenu menu;
+        // MenuScreens.create runs the whole vanilla path: builds the menu,
+        // assigns player.containerMenu, builds the screen and opens it. Then we
+        // overwrite the contents with what was recorded.
+        //
+        // Deliberately NOT using MenuScreens.getScreenFactory: its single-arg
+        // form is a NeoForge addition and does not exist in vanilla, and the
+        // 4-arg form varies between versions. create(MenuType, Minecraft, int,
+        // Component) has been identical from 1.17 all the way to current, so it
+        // is the one call here that cannot break on a version bump.
+        Screen screen;
         try {
-            menu = menuType.create(ReplayUIIds.CONTAINER_ID_BASE, player.getInventory());
+            MenuScreens.create(menuType, client, ReplayUIIds.CONTAINER_ID_BASE, data.title());
+            screen = client.screen;
         } catch (Exception e) {
-            DebugLog.warn("failed to create menu for type " + data.menuTypeId(), e);
+            DebugLog.warn("failed to create screen for menu type " + data.menuTypeId(), e);
+            return null;
+        }
+
+        if (!(screen instanceof AbstractContainerScreen)) {
+            // create() opened nothing, or something that is not a container -
+            // most likely this menu type has no screen registered for it.
+            if (screen != null) {
+                client.setScreen(null);
+            }
+            DebugLog.warn("no container screen registered for menu type " + data.menuTypeId()
+                    + " - skipping");
+            return null;
+        }
+
+        AbstractContainerMenu menu = ((AbstractContainerScreen<?>) screen).getMenu();
+        if (menu == null) {
+            client.setScreen(null);
+            DebugLog.warn("screen for menu type " + data.menuTypeId() + " has no menu");
             return null;
         }
 
         // Slot count must line up with what we recorded, otherwise the contents
         // would land in the wrong places.
         if (menu.slots.size() != data.items().size()) {
+            client.setScreen(null);
             DebugLog.warn("slot count mismatch: recorded " + data.items().size()
                     + " but this menu has " + menu.slots.size()
                     + " (menu type " + data.menuTypeId() + ") - skipping");
             return null;
         }
 
-        // Fill before the screen exists so the very first frame is already correct.
+        // Fill before the first frame is drawn.
         //
         // initializeContents is what the vanilla client calls when a
         // container-content packet arrives, so it is the most faithful way to
         // load our items. It delegates to the menu's ContainerSynchronizer, and
-        // that field is @Nullable - a menu built by MenuType.create has none, so
-        // the call can throw. Hence the fallback.
+        // that field is @Nullable - a menu built this way has none, so the call
+        // can throw. Hence the fallback.
         //
         // Writing slots directly is the fallback, not the preference: a Slot
         // writes through to its backing Container, which for the player-inventory
@@ -100,26 +128,15 @@ public final class ContainerScreenBuilder {
                 menu.resumeRemoteUpdates();
             } catch (Throwable t2) {
                 DebugLog.warn("failed to fill menu slots", t2);
+                client.setScreen(null);
                 return null;
             }
         }
 
-        // MenuScreens.create does this internally; we build the screen by hand,
-        // so it has to be done here or closing and slot sync would misbehave.
+        // create() already did this, but restate it: if a modded screen replaced
+        // it during construction the replay would misbehave on close.
         player.containerMenu = menu;
 
-        Optional<MenuScreens.ScreenConstructor> factory = MenuScreens.getScreenFactory(menuType);
-        if (factory.isEmpty()) {
-            DebugLog.warn("no screen factory registered for menu type " + data.menuTypeId()
-                    + " - skipping");
-            return null;
-        }
-
-        try {
-            return factory.get().create(menu, player.getInventory(), data.title());
-        } catch (Exception e) {
-            DebugLog.warn("failed to build screen", e);
-            return null;
-        }
+        return screen;
     }
 }
