@@ -4,6 +4,7 @@
   "version": "${version}",
   "name": "Replay UI",
   "description": "Records container screens into Flashback replays and rebuilds them on playback.",
+  "icon": "assets/replayui/icon.png",
   "authors": ["wjx-cookie"],
   "license": "MIT",
   "contact": {
