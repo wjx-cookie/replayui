@@ -1,6 +1,7 @@
 package com.replayui.record;
 
 import com.replayui.codec.UiStateData;
+import com.replayui.log.DebugLog;
 import com.replayui.mixin.MenuTypeAccessor;
 import com.replayui.mixin.MouseHandlerAccessor;
 import net.minecraft.client.Minecraft;
@@ -25,6 +26,9 @@ import java.util.UUID;
  * mod container that plays by the normal rules becomes recordable for free.
  */
 public final class UiStateReader {
+
+    /** Reported once, so a broken cursor probe cannot warn every tick. */
+    private static boolean mouseFailed = false;
 
     private UiStateReader() {
     }
@@ -71,13 +75,32 @@ public final class UiStateReader {
             items.add(slot.getItem().copy());
         }
 
-        MouseHandlerAccessor mouse = (MouseHandlerAccessor) client.mouseHandler;
-        double rawX = mouse.replayui$getXpos();
-        double rawY = mouse.replayui$getYpos();
+        // Not part of menu.slots - it is the stack floating under the cursor,
+        // held in its own field on the menu and drawn there every frame.
+        ItemStack carried = menu.getCarried().copy();
+
+        // Kept apart from the rest: losing the cursor is a cosmetic downgrade,
+        // losing the whole sample is not. A cast failure here (the accessor
+        // mixin not applying) or a null handler would otherwise be caught by
+        // UiSampler's catch-all and disable sampling for the entire session -
+        // no UI recorded at all, because two doubles could not be read.
+        double rawX = 0.0;
+        double rawY = 0.0;
+        try {
+            MouseHandlerAccessor mouse = (MouseHandlerAccessor) client.mouseHandler;
+            rawX = mouse.replayui$getXpos();
+            rawY = mouse.replayui$getYpos();
+        } catch (Throwable t) {
+            if (!mouseFailed) {
+                mouseFailed = true;
+                DebugLog.warn("could not read cursor position, "
+                        + "mouse playback disabled for this session", t);
+            }
+        }
 
         // blockPos left null: positioning is solved by aligning the viewer's
         // yaw with the recorded player, so the block is not needed.
         return new UiStateData(ownerUuid, true, menuTypeId, containerScreen.getTitle(),
-                items, menu.containerId, rawX, rawY, null);
+                items, carried, menu.containerId, rawX, rawY, null);
     }
 }

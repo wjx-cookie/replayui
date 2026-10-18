@@ -94,10 +94,32 @@ public class MixinAbstractContainerScreen {
         }
     }
 
+    /**
+     * Two ways a menu of ours can look:
+     * <ul>
+     *   <li>Container route - built with our synthetic id, so the id test finds
+     *       it. This also covers screens belonging to other mods, since the id
+     *       is all that matters.</li>
+     *   <li>Player inventory (the E screen) - it IS the viewer's own
+     *       {@code inventoryMenu}, id 0, so the id test cannot tell it apart
+     *       from a normal one. Identity is the only workable check, hence the
+     *       extra call.</li>
+     * </ul>
+     *
+     * <p>The second case matters more than it looks: without it the E screen
+     * would not be recognised, so pressing E would close it through vanilla and
+     * then be immediately reopened by the ticker - looking like the key does
+     * nothing - and clicks would reach the replay server as real inventory
+     * actions on container 0.
+     */
     @SuppressWarnings("unchecked")
     private boolean replayui$isOurs() {
         AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
         var menu = self.getMenu();
-        return menu != null && menu.containerId == ReplayUIIds.CONTAINER_ID_BASE;
+        if (menu == null) {
+            return false;
+        }
+        return menu.containerId == ReplayUIIds.CONTAINER_ID_BASE
+                || PlaybackTicker.isRebuiltMenu(menu);
     }
 }

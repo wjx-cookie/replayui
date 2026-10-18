@@ -123,7 +123,7 @@ public final class ContainerScreenBuilder {
             return null;
         }
 
-        if (!fillMenu(menu, data.items())) {
+        if (!fillMenu(menu, data.items(), data.carried())) {
             client.setScreen(null);
             return null;
         }
@@ -163,13 +163,49 @@ public final class ContainerScreenBuilder {
             return null;
         }
 
-        if (!fillMenu(inventoryMenu, data.items())) {
+        if (!fillMenu(inventoryMenu, data.items(), data.carried())) {
             return null;
         }
 
         player.containerMenu = inventoryMenu;
         DebugLog.verbose("opened player inventory screen");
         return new InventoryScreen(player);
+    }
+
+    /**
+     * Updates an already-open screen with newer recorded contents.
+     *
+     * <p>The screen is kept as-is and only its slots are reloaded. Rebuilding
+     * instead would replace the screen every tick the contents differ: it would
+     * flicker, reset scroll position, reopen on top of whatever the viewer had
+     * focused, and re-run construction for no reason.
+     *
+     * <p>Works for both routes - a container screen opened through
+     * {@code MenuScreens.create} and the player inventory, which is also an
+     * {@link AbstractContainerScreen} whose menu is the viewer's own
+     * {@code inventoryMenu}.
+     *
+     * @return true if the contents were applied
+     */
+    public static boolean refresh(Screen screen, UiStateData data) {
+        if (!(screen instanceof AbstractContainerScreen<?> containerScreen)) {
+            return false;
+        }
+
+        AbstractContainerMenu menu = containerScreen.getMenu();
+        if (menu == null) {
+            return false;
+        }
+
+        // Same guard as on first build: a mismatch would drop items into slots
+        // that mean something else.
+        if (menu.slots.size() != data.items().size()) {
+            DebugLog.verbose("refresh skipped, slot count changed: screen has "
+                    + menu.slots.size() + " but recording has " + data.items().size());
+            return false;
+        }
+
+        return fillMenu(menu, data.items(), data.carried());
     }
 
     /**
@@ -186,9 +222,16 @@ public final class ContainerScreenBuilder {
      * half is the viewer's real Inventory. InventorySnapshot in PlaybackTicker
      * is what makes that safe to do.
      */
-    private static boolean fillMenu(AbstractContainerMenu menu, List<ItemStack> items) {
+    private static boolean fillMenu(AbstractContainerMenu menu, List<ItemStack> items, ItemStack carried) {
         try {
+            // Carried is initializeContents' third argument, so passing EMPTY
+            // here deliberately blanks it; the recorded stack is only put back
+            // by the setCarried below. Doing it in two steps rather than
+            // passing carried directly keeps the fallback path below
+            // symmetrical, and covers the case where initializeContents throws
+            // partway through and never reaches the carried assignment.
             menu.initializeContents(0, items, ItemStack.EMPTY);
+            menu.setCarried(carried);
             return true;
         } catch (Throwable t) {
             DebugLog.verbose("initializeContents unavailable, writing slots directly: " + t);
@@ -198,6 +241,7 @@ public final class ContainerScreenBuilder {
                     menu.getSlot(i).set(items.get(i));
                 }
                 menu.resumeRemoteUpdates();
+                menu.setCarried(carried);
                 return true;
             } catch (Throwable t2) {
                 DebugLog.warn("failed to fill menu slots", t2);

@@ -23,6 +23,13 @@ import java.util.UUID;
  * @param items       every slot of the menu, in {@code menu.slots} order
  *                    (container slots first, then the player's). Recording and
  *                    replay both read this same source so the sizes match.
+ * @param carried     the stack riding on the cursor, which is deliberately NOT
+ *                    one of {@code items}: vanilla keeps it in its own field on
+ *                    the menu ({@code menu.getCarried()}) and draws it at the
+ *                    cursor every frame. Leaving it out makes grabbing and
+ *                    placing items look wrong - the stack would vanish from the
+ *                    slot and reappear somewhere else without the floating part
+ *                    in between. {@code ItemStack.EMPTY} when nothing is held.
  * @param containerId original id, kept for reference only
  * @param mouseX      raw window cursor position
  * @param mouseY      raw window cursor position
@@ -35,6 +42,7 @@ public record UiStateData(
         int menuTypeId,
         Component title,
         List<ItemStack> items,
+        ItemStack carried,
         int containerId,
         double mouseX,
         double mouseY,
@@ -56,7 +64,7 @@ public record UiStateData(
 
     public static UiStateData closed(UUID ownerUuid) {
         return new UiStateData(ownerUuid, false, NO_MENU_TYPE, Component.empty(),
-                List.of(), 0, 0.0, 0.0, null);
+                List.of(), ItemStack.EMPTY, 0, 0.0, 0.0, null);
     }
 
     public boolean hasMenuType() {

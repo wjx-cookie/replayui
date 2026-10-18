@@ -28,6 +28,12 @@ public final class UiStateCodec {
      */
     public static final int MAX_PAYLOAD_BYTES = 1024 * 1024 - 4096;
 
+    /**
+     * Upper bound on samples per tick, so a corrupt count cannot turn into an
+     * unbounded allocation. A normal tick carries one; the baseline carries one.
+     */
+    public static final int MAX_SAMPLES_PER_TICK = 64;
+
     private UiStateCodec() {
     }
 
@@ -62,6 +68,8 @@ public final class UiStateCodec {
         for (ItemStack stack : data.items()) {
             ItemStack.OPTIONAL_STREAM_CODEC.encode(buf, stack); // decode
         }
+
+        ItemStack.OPTIONAL_STREAM_CODEC.encode(buf, data.carried()); // decode
 
         buf.writeVarInt(data.containerId());                  // readVarInt
         buf.writeDouble(data.mouseX());                       // readDouble
@@ -98,6 +106,14 @@ public final class UiStateCodec {
             items.add(ItemStack.OPTIONAL_STREAM_CODEC.decode(buf));
         }
 
+        // OPTIONAL_STREAM_CODEC never returns null, but decode() on a buffer
+        // that ran out can; EMPTY is the only sane fallback and keeps every
+        // later encode from NPE-ing on a missing field.
+        ItemStack carried = ItemStack.OPTIONAL_STREAM_CODEC.decode(buf);
+        if (carried == null) {
+            carried = ItemStack.EMPTY;
+        }
+
         int containerId = buf.readVarInt();
         double mouseX = buf.readDouble();
         double mouseY = buf.readDouble();
@@ -105,7 +121,7 @@ public final class UiStateCodec {
         BlockPos blockPos = buf.readBoolean() ? buf.readBlockPos() : null;
 
         return new UiStateData(ownerUuid, open, menuTypeId, title,
-                items, containerId, mouseX, mouseY, blockPos);
+                items, carried, containerId, mouseX, mouseY, blockPos);
     }
 
     /** Encodes one tick's worth of samples: count followed by each sample. */
@@ -118,6 +134,15 @@ public final class UiStateCodec {
 
     public static List<UiStateData> decodeTick(RegistryFriendlyByteBuf buf) {
         int count = buf.readVarInt();
+        // Sanity bound before allocating. A writer only ever emits one sample
+        // per tick (delta) or one for the whole baseline, so a larger number
+        // means the stream is corrupt - and new ArrayList<>(count) with a
+        // garbage count is an allocation of arbitrary size inside the replay
+        // server thread. Throw so UiStateAction's catch skips the payload
+        // rather than letting the allocation happen.
+        if (count < 0 || count > MAX_SAMPLES_PER_TICK) {
+            throw new IllegalStateException("replayui: implausible sample count " + count);
+        }
         List<UiStateData> samples = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             samples.add(decode(buf));

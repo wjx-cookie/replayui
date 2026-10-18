@@ -30,8 +30,14 @@ public final class ReplayUIIds {
      */
     public static final int CONTAINER_ID_BASE = 200;
 
-    /** Format version, bumped whenever the codec layout changes. */
-    public static final int FORMAT_VERSION = 1;
+    /**
+     * Format version, bumped whenever the codec layout changes.
+     *
+     * <p>2: added the cursor-held stack ({@code UiStateData#carried}). Replays
+     * written with 1 are rejected by the version check rather than
+     * mis-decoded - they must be re-recorded.
+     */
+    public static final int FORMAT_VERSION = 2;
 
     private ReplayUIIds() {
     }
