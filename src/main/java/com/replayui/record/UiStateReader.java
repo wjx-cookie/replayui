@@ -6,6 +6,7 @@ import com.replayui.mixin.MouseHandlerAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
@@ -40,9 +41,26 @@ public final class UiStateReader {
         }
 
         MenuType<?> menuType = ((MenuTypeAccessor) menu).replayui$getMenuType();
-        int menuTypeId = menuType != null
-                ? BuiltInRegistries.MENU.getId(menuType)
-                : UiStateData.NO_MENU_TYPE;
+
+        // The player's own inventory needs to be recognised here rather than by
+        // its MenuType: vanilla never opens it through MenuScreens, so there is
+        // no screen factory for whatever type it reports, and the container path
+        // on playback would have nothing to build. Identity is the reliable test
+        // - it is the menu the player always owns - with the screen class as a
+        // fallback in case a version wires it differently.
+        boolean isPlayerInventory = client.player != null && menu == client.player.inventoryMenu;
+        if (!isPlayerInventory) {
+            isPlayerInventory = screen instanceof InventoryScreen;
+        }
+
+        int menuTypeId;
+        if (isPlayerInventory) {
+            menuTypeId = UiStateData.PLAYER_INVENTORY;
+        } else {
+            menuTypeId = menuType != null
+                    ? BuiltInRegistries.MENU.getId(menuType)
+                    : UiStateData.NO_MENU_TYPE;
+        }
 
         // Walk menu.slots rather than getItems(): that keeps the recording side
         // and ContainerScreenBuilder reading exactly the same source, so the

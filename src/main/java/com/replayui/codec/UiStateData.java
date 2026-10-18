@@ -43,6 +43,17 @@ public record UiStateData(
 
     public static final int NO_MENU_TYPE = -1;
 
+    /**
+     * Marker for the player's own inventory (the screen you get by pressing E).
+     *
+     * <p>It has no usable MenuType of its own: vanilla opens it with
+     * {@code new InventoryScreen(player)} and never goes through
+     * {@code MenuScreens}, so there is no screen factory registered for it and
+     * the normal container path cannot rebuild it. Recording it as a marker
+     * instead of a registry id lets the playback side take that other route.
+     */
+    public static final int PLAYER_INVENTORY = -2;
+
     public static UiStateData closed(UUID ownerUuid) {
         return new UiStateData(ownerUuid, false, NO_MENU_TYPE, Component.empty(),
                 List.of(), 0, 0.0, 0.0, null);
@@ -50,5 +61,9 @@ public record UiStateData(
 
     public boolean hasMenuType() {
         return menuTypeId != NO_MENU_TYPE;
+    }
+
+    public boolean isPlayerInventory() {
+        return menuTypeId == PLAYER_INVENTORY;
     }
 }

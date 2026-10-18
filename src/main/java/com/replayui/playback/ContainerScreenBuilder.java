@@ -7,11 +7,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
+
+import java.util.List;
 
 /**
  * Rebuilds a real container screen from recorded state.
@@ -36,13 +39,29 @@ public final class ContainerScreenBuilder {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static Screen build(Minecraft client, UiStateData data) {
-        if (!data.open() || !data.hasMenuType()) {
+        if (!data.open()) {
             return null;
         }
 
         LocalPlayer player = client.player;
         if (player == null) {
             return null;
+        }
+
+        // Reached when a container screen was open but no MenuType could be
+        // read from it - the creative inventory is the usual case, and it is
+        // out of scope rather than broken. Logged once (PlaybackTicker stops
+        // retrying a failed menu type) so it is visible instead of silent.
+        if (!data.hasMenuType()) {
+            DebugLog.verbose("screen was open but has no menu type - skipping. "
+                    + "Creative inventory and other synthetic screens are not supported.");
+            return null;
+        }
+
+        // Must come before the registry lookup: PLAYER_INVENTORY is a marker,
+        // not a real id, so byId() would reject it.
+        if (data.isPlayerInventory()) {
+            return buildPlayerInventory(player, data);
         }
 
         MenuType menuType = BuiltInRegistries.MENU.byId(data.menuTypeId());
@@ -104,33 +123,9 @@ public final class ContainerScreenBuilder {
             return null;
         }
 
-        // Fill before the first frame is drawn.
-        //
-        // initializeContents is what the vanilla client calls when a
-        // container-content packet arrives, so it is the most faithful way to
-        // load our items. It delegates to the menu's ContainerSynchronizer, and
-        // that field is @Nullable - a menu built this way has none, so the call
-        // can throw. Hence the fallback.
-        //
-        // Writing slots directly is the fallback, not the preference: a Slot
-        // writes through to its backing Container, which for the player-inventory
-        // half is the viewer's real Inventory. InventorySnapshot in
-        // PlaybackTicker is what makes that safe to do.
-        try {
-            menu.initializeContents(0, data.items(), ItemStack.EMPTY);
-        } catch (Throwable t) {
-            DebugLog.verbose("initializeContents unavailable, writing slots directly: " + t);
-            try {
-                menu.suppressRemoteUpdates();
-                for (int i = 0; i < data.items().size(); i++) {
-                    menu.getSlot(i).set(data.items().get(i));
-                }
-                menu.resumeRemoteUpdates();
-            } catch (Throwable t2) {
-                DebugLog.warn("failed to fill menu slots", t2);
-                client.setScreen(null);
-                return null;
-            }
+        if (!fillMenu(menu, data.items())) {
+            client.setScreen(null);
+            return null;
         }
 
         // create() already did this, but restate it: if a modded screen replaced
@@ -138,5 +133,76 @@ public final class ContainerScreenBuilder {
         player.containerMenu = menu;
 
         return screen;
+    }
+
+    /**
+     * The player's own inventory, opened with E.
+     *
+     * <p>It cannot go down the container route: vanilla builds it with
+     * {@code new InventoryScreen(player)} and there is no MenuScreens factory
+     * for it, so {@code MenuScreens.create} would silently do nothing. Instead
+     * the recorded contents are written into the viewer's real inventory - which
+     * is exactly the data source that screen reads - and the screen is then
+     * constructed the vanilla way.
+     *
+     * <p>Writing into the viewer's inventory is the same thing the container
+     * path already does for the player-inventory rows of a chest menu, so
+     * {@code InventorySnapshot} in PlaybackTicker already covers restoring it.
+     */
+    private static Screen buildPlayerInventory(LocalPlayer player, UiStateData data) {
+        AbstractContainerMenu inventoryMenu = player.inventoryMenu;
+        if (inventoryMenu == null) {
+            DebugLog.warn("viewer has no inventory menu - skipping player inventory");
+            return null;
+        }
+
+        if (inventoryMenu.slots.size() != data.items().size()) {
+            DebugLog.warn("slot count mismatch: recorded " + data.items().size()
+                    + " but this inventory menu has " + inventoryMenu.slots.size()
+                    + " - skipping");
+            return null;
+        }
+
+        if (!fillMenu(inventoryMenu, data.items())) {
+            return null;
+        }
+
+        player.containerMenu = inventoryMenu;
+        DebugLog.verbose("opened player inventory screen");
+        return new InventoryScreen(player);
+    }
+
+    /**
+     * Loads recorded items into a menu before its first frame is drawn.
+     *
+     * <p>initializeContents is what the vanilla client calls when a
+     * container-content packet arrives, so it is the most faithful way to load
+     * them. It delegates to the menu's ContainerSynchronizer, and that field is
+     * {@code @Nullable} - a menu we built ourselves has none, so the call can
+     * throw. Hence the fallback.
+     *
+     * <p>Writing slots directly is the fallback, not the preference: a Slot
+     * writes through to its backing Container, which for the player-inventory
+     * half is the viewer's real Inventory. InventorySnapshot in PlaybackTicker
+     * is what makes that safe to do.
+     */
+    private static boolean fillMenu(AbstractContainerMenu menu, List<ItemStack> items) {
+        try {
+            menu.initializeContents(0, items, ItemStack.EMPTY);
+            return true;
+        } catch (Throwable t) {
+            DebugLog.verbose("initializeContents unavailable, writing slots directly: " + t);
+            try {
+                menu.suppressRemoteUpdates();
+                for (int i = 0; i < items.size(); i++) {
+                    menu.getSlot(i).set(items.get(i));
+                }
+                menu.resumeRemoteUpdates();
+                return true;
+            } catch (Throwable t2) {
+                DebugLog.warn("failed to fill menu slots", t2);
+                return false;
+            }
+        }
     }
 }
