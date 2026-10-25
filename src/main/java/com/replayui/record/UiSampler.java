@@ -18,6 +18,9 @@ public final class UiSampler {
 
     private static UiStateData lastWritten = null;
 
+    /** Whether a recording was running on the previous tick. */
+    private static boolean wasRecording = false;
+
     private UiSampler() {
     }
 
@@ -25,12 +28,63 @@ public final class UiSampler {
     private static boolean disabled = false;
 
     public static void onClientTick(Minecraft client) {
-        if (disabled) {
+        // The switch is checked before `disabled`, on purpose.
+        //
+        // Sampling can be dead for the whole session - a failed probe, an
+        // accessor mixin that did not apply - and that must not stop the
+        // closing sample below. It is the only thing that ends a stream which
+        // still says "open", and with `disabled` checked first it would be
+        // skipped: the newest recorded sample keeps claiming a screen is open,
+        // nothing is going to overwrite it, and playback would pin that screen
+        // up for the rest of the replay.
+        //
+        // Writing it needs no probe either - closed() carries no screen data -
+        // so it is safe to send whatever state sampling is in.
+        if (!ReplayUIConfig.enabled) {
+            // Hotkey switched the mod off mid-recording.
+            //
+            // The newest sample may still say "open", and nothing is going to
+            // overwrite it because we are about to stop writing - so playback
+            // would keep that screen up for the rest of the replay, long after
+            // the recorded player closed it. Emitting one closing sample ends
+            // the stream in a state that is actually true.
+            if (isRecording(client) && lastWritten != null && lastWritten.open()) {
+                LocalPlayer player = client.player;
+                if (player != null) {
+                    RecorderBridge.writeDelta(UiStateData.closed(player.getUUID()));
+                }
+            }
+            // Null either way: re-enabling has to start clean, and a stale
+            // lastWritten would suppress the first sample after that.
+            lastWritten = null;
             return;
         }
 
         if (!isRecording(client)) {
             lastWritten = null;
+            wasRecording = false;
+            return;
+        }
+
+        // Start of a recording, detected here rather than from an outside call.
+        //
+        // There used to be a public reset() for exactly this and nothing ever
+        // called it - a live contract on dead code. Left unset, the last sample
+        // of the PREVIOUS recording survives into this one: if the player starts
+        // a new recording while the same screen is still open and nothing about
+        // it has moved, the first sample compares equal to that leftover and is
+        // skipped, so the new file gets no opening sample at all and the screen
+        // does not appear until something happens to change. Doing it on the
+        // transition cannot be forgotten, because there is no caller to forget.
+        if (!wasRecording) {
+            wasRecording = true;
+            lastWritten = null;
+        }
+
+        // Moved below the switch check - see the note at the top. It still
+        // gates sampling itself: once the probe has thrown there is no point
+        // asking again 20 times a second.
+        if (disabled) {
             return;
         }
 
@@ -62,7 +116,16 @@ public final class UiSampler {
 
         // State model: skip the write when nothing changed. Keeps files small
         // and makes the stream cheap to scan.
-        if (data.equals(lastWritten)) {
+        //
+        // sameAs, not equals - see UiStateData#sameAs. The record's generated
+        // equals compares ItemStack by identity, and every stack here is a fresh
+        // copy, so it was always false and this never actually skipped anything.
+        //
+        // Note that the cursor counts as a change: hovering over slots writes a
+        // sample per tick even when no item moves. That is deliberate - dropping
+        // it would freeze the replayed cursor - but it means "nothing changed"
+        // really means "nothing moved, including the mouse".
+        if (data.sameAs(lastWritten)) {
             return;
         }
         lastWritten = data;
@@ -80,12 +143,5 @@ public final class UiSampler {
         // synthetic screen PlaybackTicker just opened, and we would write our
         // own output back into the file.
         return !Flashback.isInReplay();
-    }
-
-    /** Called when a recording stops, so the next one starts from a clean slate. */
-    public static void reset() {
-        lastWritten = null;
-        // Not disabled: a failure is a permanent property of this session's
-        // class layout, not of the recording that was running.
     }
 }

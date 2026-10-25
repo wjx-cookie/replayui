@@ -2,6 +2,7 @@ package com.replayui.record;
 
 import com.moulberry.flashback.Flashback;
 import com.moulberry.flashback.record.Recorder;
+import com.replayui.ReplayUIConfig;
 import com.replayui.action.UiStateAction;
 import com.replayui.codec.UiStateCodec;
 import com.replayui.codec.UiStateData;
@@ -65,6 +66,18 @@ public final class RecorderBridge {
      * Packets added here bypass both the ignore list and the readyToWrite gate.
      */
     public static void writeBaseline(Consumer<net.minecraft.network.protocol.Packet<? super ClientGamePacketListener>> consumer) {
+        // Same gate as the delta path, enforced here rather than in
+        // MixinRecorder because this class owns every write.
+        //
+        // It matters more than it looks: a baseline fires at recording start
+        // and again on resume after a pause, so with the switch off but this
+        // path open, a recording would still pick up a screen the moment it
+        // started - and playback would then show UI from a recording made while
+        // the mod was supposedly disabled.
+        if (!ReplayUIConfig.enabled) {
+            return;
+        }
+
         Minecraft client = Minecraft.getInstance();
         LocalPlayer player = client.player;
         if (player == null || client.level == null) {

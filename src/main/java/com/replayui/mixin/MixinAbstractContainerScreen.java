@@ -2,6 +2,7 @@ package com.replayui.mixin;
 
 import com.replayui.ReplayUIIds;
 import com.replayui.playback.PlaybackTicker;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -64,12 +65,28 @@ public class MixinAbstractContainerScreen {
         // Letting the default path run would call closeContainer() on a menu
         // the replay server has never heard of; swallowing the key entirely
         // would leave the viewer stuck with no way to dismiss the screen.
-        if (keyCode == GLFW_KEY_ESCAPE || keyCode == GLFW_KEY_E) {
+        if (keyCode == GLFW_KEY_ESCAPE || replayui$isInventoryKey(keyCode, scanCode)) {
             PlaybackTicker.dismissByUser();
             cir.setReturnValue(true);
             return;
         }
         cir.setReturnValue(true);
+    }
+
+    /**
+     * The inventory key, which is what closes a container in vanilla.
+     *
+     * <p>GLFW_KEY_E is only the default. Matching the literal alone breaks
+     * anyone who rebound it: the key they actually use falls through to the
+     * swallow below and does nothing, so the rebuilt screen can no longer be
+     * closed at all. Asking the binding covers both.
+     */
+    private static boolean replayui$isInventoryKey(int keyCode, int scanCode) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft != null && minecraft.options.keyInventory.matches(keyCode, scanCode)) {
+            return true;
+        }
+        return keyCode == GLFW_KEY_E;
     }
 
     /**

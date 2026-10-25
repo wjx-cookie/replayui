@@ -14,6 +14,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -50,8 +51,14 @@ public final class ContainerScreenBuilder {
 
         // Reached when a container screen was open but no MenuType could be
         // read from it - the creative inventory is the usual case, and it is
-        // out of scope rather than broken. Logged once (PlaybackTicker stops
-        // retrying a failed menu type) so it is visible instead of silent.
+        // out of scope rather than broken.
+        //
+        // verbose, so it is invisible without -Dreplayui.debug=true. That is
+        // deliberate: this fires for a screen type the mod does not support at
+        // all, and warning about it would scold anyone who simply uses creative
+        // mode. PlaybackTicker stops retrying a failed menu type, so it cannot
+        // repeat either. Turn verbose on when a screen should have appeared and
+        // did not.
         if (!data.hasMenuType()) {
             DebugLog.verbose("screen was open but has no menu type - skipping. "
                     + "Creative inventory and other synthetic screens are not supported.");
@@ -86,12 +93,29 @@ public final class ContainerScreenBuilder {
         // 4-arg form varies between versions. create(MenuType, Minecraft, int,
         // Component) has been identical from 1.17 all the way to current, so it
         // is the one call here that cannot break on a version bump.
+        // Remembered because create() hands back nothing: the only way to see
+        // what it opened is to read client.screen afterwards, and when it opens
+        // nothing that read returns whatever the viewer already had open.
+        //
+        // Without this comparison the failure paths below would call
+        // setScreen(null) on the viewer's own screen - closing their pause menu
+        // or chat, something we never opened and must not be closing.
+        Screen before = client.screen;
+
         Screen screen;
         try {
             MenuScreens.create(menuType, client, ReplayUIIds.CONTAINER_ID_BASE, data.title());
             screen = client.screen;
         } catch (Exception e) {
             DebugLog.warn("failed to create screen for menu type " + data.menuTypeId(), e);
+            return null;
+        }
+
+        if (screen != null && screen == before) {
+            // Nothing was opened: no screen factory for this menu type in this
+            // version, most likely. The viewer's own screen is left alone.
+            DebugLog.warn("no screen opened for menu type " + data.menuTypeId()
+                    + " - skipping");
             return null;
         }
 
@@ -223,6 +247,42 @@ public final class ContainerScreenBuilder {
      * is what makes that safe to do.
      */
     private static boolean fillMenu(AbstractContainerMenu menu, List<ItemStack> items, ItemStack carried) {
+        // Try the vanilla entry point first, then CHECK that it actually wrote.
+        //
+        // A menu we built ourselves has no ContainerSynchronizer - that is only
+        // set by the client packet listener for menus a server opened - and what
+        // initializeContents does in that case is not something to gamble on.
+        // If it dereferences the synchronizer it throws and the fallback runs;
+        // if it quietly does nothing, it returns normally and the fallback would
+        // NEVER run, leaving a perfectly good looking screen with nothing in it
+        // and not one line in the log to explain why.
+        //
+        // So the result is verified instead of trusted. Slot-by-slot comparison
+        // of a few dozen stacks, once per refresh at most - cheap next to a
+        // feature that silently shows empty containers.
+        // Copy everything before anything touches the menu.
+        //
+        // `items` is the list UiStateData still holds, and PlaybackTicker keeps
+        // that same sample as `lastApplied` to decide later whether anything
+        // changed. Copying only in the fallback below was not enough: if
+        // initializeContents keeps the list it was handed rather than copying
+        // into the slots, the menu ends up holding the recorded objects on the
+        // path that reports success - and then a vanilla split or shrink on
+        // that menu edits PlaybackState's cached sample as a side effect.
+        // contentsChanged compares against that cache, so it would start
+        // reporting "unchanged" for slots that did move and the screen would
+        // freeze while the replay carried on.
+        //
+        // For the player-inventory rows the menu is backed by the viewer's real
+        // Inventory, so the same aliasing would also leave foreign objects
+        // sitting in their inventory until closeQuietly restores it.
+        List<ItemStack> source = new ArrayList<>(items.size());
+        for (ItemStack stack : items) {
+            source.add(stack == null ? ItemStack.EMPTY : stack.copy());
+        }
+        ItemStack held = carried == null ? ItemStack.EMPTY : carried.copy();
+
+        boolean viaVanilla = false;
         try {
             // Carried is initializeContents' third argument, so passing EMPTY
             // here deliberately blanks it; the recorded stack is only put back
@@ -230,23 +290,58 @@ public final class ContainerScreenBuilder {
             // passing carried directly keeps the fallback path below
             // symmetrical, and covers the case where initializeContents throws
             // partway through and never reaches the carried assignment.
-            menu.initializeContents(0, items, ItemStack.EMPTY);
-            menu.setCarried(carried);
-            return true;
+            menu.initializeContents(0, source, ItemStack.EMPTY);
+            menu.setCarried(held.copy());
+            viaVanilla = slotsMatch(menu, source);
         } catch (Throwable t) {
             DebugLog.verbose("initializeContents unavailable, writing slots directly: " + t);
+        }
+
+        if (viaVanilla) {
+            return true;
+        }
+
+        try {
+            menu.suppressRemoteUpdates();
             try {
-                menu.suppressRemoteUpdates();
-                for (int i = 0; i < items.size(); i++) {
-                    menu.getSlot(i).set(items.get(i));
+                // No copy needed here - `source` already is one. Copying again
+                // would be a second allocation per slot per refresh for nothing.
+                for (int i = 0; i < source.size(); i++) {
+                    menu.getSlot(i).set(source.get(i));
                 }
+            } finally {
+                // finally, not straight-line: a throw partway through the
+                // loop used to skip this, leaving the menu suppressed for
+                // good. On the player-inventory route the menu IS the
+                // viewer's own inventoryMenu, so it stayed suppressed after
+                // the screen was gone - every later slot change silently
+                // stopped being broadcast, and the viewer's own container
+                // interactions went nowhere for the rest of the session.
                 menu.resumeRemoteUpdates();
-                menu.setCarried(carried);
-                return true;
-            } catch (Throwable t2) {
-                DebugLog.warn("failed to fill menu slots", t2);
+            }
+            menu.setCarried(held.copy());
+            return true;
+        } catch (Throwable t2) {
+            DebugLog.warn("failed to fill menu slots", t2);
+            return false;
+        }
+    }
+
+    /** Whether every slot already holds what was recorded. */
+    private static boolean slotsMatch(AbstractContainerMenu menu, List<ItemStack> items) {
+        if (menu.slots.size() != items.size()) {
+            return false;
+        }
+        for (int i = 0; i < items.size(); i++) {
+            ItemStack want = items.get(i);
+            ItemStack got = menu.getSlot(i).getItem();
+            if (want == null || got == null) {
+                return false;
+            }
+            if (want.getCount() != got.getCount() || !ItemStack.matches(want, got)) {
                 return false;
             }
         }
+        return true;
     }
 }

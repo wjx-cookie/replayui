@@ -1,0 +1,6 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Toggle container UI replay",
+  "replayui.toggle.on": "ReplayUI: on",
+  "replayui.toggle.off": "ReplayUI: off"
+}

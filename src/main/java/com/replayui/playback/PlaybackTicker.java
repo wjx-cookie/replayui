@@ -53,6 +53,12 @@ public final class PlaybackTicker {
     private static boolean userDismissed = false;
     private static int dismissedMenuTypeId = UiStateData.NO_MENU_TYPE;
 
+    /**
+     * Set when another screen took the display away from ours, so we wait for
+     * the display to come free instead of grabbing it straight back.
+     */
+    private static boolean waitingForDisplay = false;
+
     private PlaybackTicker() {
     }
 
@@ -65,6 +71,61 @@ public final class PlaybackTicker {
     private static final int REFRESH_FAILURE_LIMIT = 5;
 
     public static void onClientTick(Minecraft client) {
+        if (!ReplayUIConfig.enabled) {
+            // Hotkey switched the mod off. Take down whatever is currently
+            // rebuilt - including restoring the viewer's inventory, which is
+            // the part that matters, since a rebuilt player-inventory screen
+            // has the recorded player's items sitting in it right now.
+            //
+            // Guarded on wasInReplay so this is not doing work outside a
+            // replay; closeQuietly is safe to repeat anyway, it no-ops once
+            // there is nothing of ours left.
+            if (wasInReplay) {
+                closeQuietly(client);
+                userDismissed = false;
+                dismissedMenuTypeId = UiStateData.NO_MENU_TYPE;
+                failures = 0;
+                refreshFailures = 0;
+
+                // This branch returns before tick() runs, so tick()'s own
+                // "left the replay" cleanup can never fire from here - it has
+                // to be done here as well. Getting this wrong strands
+                // PlaybackState and wasInReplay, and the next replay then
+                // starts carrying the previous one's data.
+                if (!Flashback.isInReplay()) {
+                    PlaybackState.clear();
+                    wasInReplay = false;
+                }
+                // Still inside a replay: PlaybackState deliberately survives.
+                //
+                // It holds the newest sample from the file, and the recording
+                // only writes when the state actually changes - a player
+                // standing still with a chest open emits nothing. Clearing it
+                // here would leave `current` null until the recorded player
+                // happens to move, which is indistinguishable from
+                // "re-enabling does not work".
+                //
+                // userDismissed is dropped either way: toggling back on is a
+                // clear "I want to see it", and honouring a stale dismiss
+                // would make the toggle look broken.
+            } else if (!Flashback.isInReplay()) {
+                // No rebuild ever happened, so wasInReplay was never set - but
+                // the payload receiver is not gated on `enabled`, so
+                // PlaybackState has been filling up the whole time. Nobody else
+                // is going to drop it: tick() is what normally notices a replay
+                // ended, and tick() does not run while the switch is off.
+                //
+                // Left behind, the last sample of the replay we just quit
+                // survives into the next one. isTargetMatch adopts the first
+                // owner it hears from, and that sample's owner is exactly the
+                // one it adopted last time - so the next replay can open by
+                // showing the PREVIOUS replay's screen, and keep it up until
+                // something in the new recording happens to emit a sample.
+                PlaybackState.clear();
+            }
+            return;
+        }
+
         if (failures >= FAILURE_LIMIT) {
             // Tripped breaker. The message logged when it tripped promises
             // "reopen the replay to try again", so leaving a replay has to
@@ -179,6 +240,40 @@ public final class PlaybackTicker {
         // us from re-popping it until the recorded state changes.
         boolean weHaveNone = ourScreen == null;
         boolean somethingClosedIt = !weHaveNone && client.screen == null;
+        // Something else took the display while our screen was supposed to be up
+        // - chat, or another mod's screen.
+        //
+        // This was the one combination the rebuild test did not cover: with
+        // ourScreen set, and client.screen neither null nor ours, neither the
+        // rebuild branch nor the refresh branch below could ever run. The tick
+        // became a no-op that never ended on its own - no content updates, and
+        // the viewer's real inventory still holding the recorded player's items,
+        // because closeQuietly is what puts it back and nothing called it.
+        //
+        // Yielding, not fighting. The first fix here rebuilt immediately, which
+        // did get the screen back - and also meant the viewer's chat closed
+        // again on the very next tick, so chat and the pause menu were simply
+        // unusable for as long as a container was on screen. Taking the display
+        // back instantly is not a fix, it is a fight the viewer loses.
+        //
+        // So: tear ours down right away - that is what puts the viewer's
+        // inventory back - and then wait until the display is free again. Only
+        // the displacement case yields; a screen that is already open the first
+        // time we want to build is still replaced, so a mod that parks a screen
+        // open for a whole replay cannot stop the UI from ever appearing.
+        boolean displacedByOther = !weHaveNone && client.screen != null && client.screen != ourScreen;
+        if (displacedByOther) {
+            closeQuietly(client);
+            waitingForDisplay = true;
+            return;
+        }
+        if (waitingForDisplay) {
+            if (client.screen != null) {
+                return;
+            }
+            waitingForDisplay = false;
+        }
+
         boolean typeChanged = data.menuTypeId() != ourMenuTypeId;
         boolean stillOurs = !weHaveNone && client.screen == ourScreen;
 
@@ -224,7 +319,22 @@ public final class PlaybackTicker {
                 failedMenuTypeId = data.menuTypeId();
                 return;
             }
-            client.setScreen(built);
+            // Only when it is not already the current one.
+            //
+            // ContainerScreenBuilder goes through MenuScreens.create, which
+            // installs the screen itself - by the time build() returns, built IS
+            // client.screen. Calling setScreen with that same instance would
+            // run removed() on it and then init() again: the screen is torn down
+            // and rebuilt every time we rebuild, resetting scroll and focus, and
+            // every other mod that listens for removed() gets a close event for
+            // a screen that never actually closed.
+            //
+            // The player-inventory route is different: it hands back a bare
+            // new InventoryScreen(player) that nothing has installed yet, so
+            // that one does need the call.
+            if (client.screen != built) {
+                client.setScreen(built);
+            }
             ourScreen = built;
             rebuiltMenu = built instanceof AbstractContainerScreen<?> builtScreen
                     ? builtScreen.getMenu()
@@ -258,6 +368,22 @@ public final class PlaybackTicker {
                     if (refreshFailures >= REFRESH_FAILURE_LIMIT) {
                         DebugLog.warn("repeated refresh failures, closing the screen");
                         closeQuietly(client);
+
+                        // Without this the screen comes straight back.
+                        //
+                        // closeQuietly clears ourScreen, so the next tick sees
+                        // "we have none" and rebuilds the same menu type from
+                        // scratch - which fills fine and then fails to refresh
+                        // again. Five ticks later it closes and rebuilds once
+                        // more: a loop that never ends, logging a warning every
+                        // cycle for as long as the replay is open.
+                        //
+                        // The build path has failedMenuTypeId for exactly this
+                        // and it is the only thing that stops the retry, so the
+                        // type has to be recorded here too. Like the build
+                        // path, it is released once the recorded menu type
+                        // moves on to something else.
+                        failedMenuTypeId = data.menuTypeId();
                     }
                 }
             }
@@ -352,6 +478,17 @@ public final class PlaybackTicker {
         boolean hadOurs = ourScreen != null || rebuiltMenu != null || savedInventory != null;
 
         LocalPlayer player = client.player;
+
+        // Nobody to hand the inventory back to: the world went away first,
+        // which is what happens when a replay is closed abruptly. The snapshot
+        // has to be dropped rather than kept - it is one of the three things
+        // that make hadOurs true, so keeping it means a later tick, by then
+        // running with a different player in a different world or replay,
+        // would restore a stranger's items over that player's own.
+        if (hadOurs && player == null) {
+            savedInventory = null;
+        }
+
         if (hadOurs && player != null) {
             // Empty the recorded cursor stack BEFORE anything is swapped.
             //
@@ -404,6 +541,7 @@ public final class PlaybackTicker {
         failedMenuTypeId = UiStateData.NO_MENU_TYPE;
         lastApplied = null;
         refreshFailures = 0;
+        waitingForDisplay = false;
     }
 
     /**

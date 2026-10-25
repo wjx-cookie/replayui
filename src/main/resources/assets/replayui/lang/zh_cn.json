@@ -1,0 +1,6 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "开关容器界面回放",
+  "replayui.toggle.on": "ReplayUI：已开启",
+  "replayui.toggle.off": "ReplayUI：已关闭"
+}

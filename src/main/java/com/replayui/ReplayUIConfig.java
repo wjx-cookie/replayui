@@ -9,6 +9,19 @@ package com.replayui;
 public final class ReplayUIConfig {
 
     /**
+     * Master switch, flipped by the hotkey in {@link ReplayUIKeybinds}.
+     *
+     * <p>Off means both halves stop: nothing is written into a recording, and
+     * nothing is rebuilt during playback. Both sides check this rather than one
+     * central gate, so a recording made while it was off stays consistent with
+     * what playback expects.
+     *
+     * <p>Always starts true - see the note on {@link ReplayUIKeybinds} about why
+     * the value is not persisted.
+     */
+    public static boolean enabled = true;
+
+    /**
      * Aligns the viewer entity's yaw with the recorded player.
      *
      * <p>Spatial GUI anchors its floating panel to {@code Minecraft.player}'s

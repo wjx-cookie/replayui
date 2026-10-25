@@ -34,6 +34,14 @@ public final class UiStateCodec {
      */
     public static final int MAX_SAMPLES_PER_TICK = 64;
 
+    /**
+     * Upper bound on slots per screen, for the same reason: a corrupt slot
+     * count must not become an unbounded allocation. Vanilla tops out near 90
+     * (large chest plus the player's rows) and modded menus go higher, so this
+     * is set well above anything legitimate.
+     */
+    public static final int MAX_SLOTS_PER_SCREEN = 1024;
+
     private UiStateCodec() {
     }
 
@@ -101,6 +109,16 @@ public final class UiStateCodec {
         }
 
         int count = buf.readVarInt();
+        // Same guard as decodeTick, and just as necessary: new ArrayList<>(count)
+        // with a corrupt count is an allocation of arbitrary size, and it
+        // happens on the replay server thread while an action is being read.
+        //
+        // Generous on purpose - the largest vanilla menu a container screen can
+        // show is around 90 slots and modded ones go well past that - so this
+        // only ever trips on data that is genuinely broken.
+        if (count < 0 || count > MAX_SLOTS_PER_SCREEN) {
+            throw new IllegalStateException("replayui: implausible slot count " + count);
+        }
         List<ItemStack> items = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             items.add(ItemStack.OPTIONAL_STREAM_CODEC.decode(buf));

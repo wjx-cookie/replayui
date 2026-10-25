@@ -55,7 +55,14 @@ public class ReplayUI implements ModInitializer, ClientModInitializer {
             });
         });
 
+        // Must happen here, not at class-load time: KeyBindingHelper touches
+        // client-only registration state.
+        ReplayUIKeybinds.register();
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Before either side runs, so a toggle takes effect this tick
+            // instead of one tick later.
+            ReplayUIKeybinds.onClientTick(client);
             UiSampler.onClientTick(client);      // recording side
             PlaybackTicker.onClientTick(client); // playback side
         });

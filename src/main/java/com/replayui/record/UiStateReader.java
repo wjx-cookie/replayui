@@ -1,5 +1,6 @@
 package com.replayui.record;
 
+import com.replayui.ReplayUIConfig;
 import com.replayui.codec.UiStateData;
 import com.replayui.log.DebugLog;
 import com.replayui.mixin.MenuTypeAccessor;
@@ -93,6 +94,18 @@ public final class UiStateReader {
         } catch (Throwable t) {
             if (!mouseFailed) {
                 mouseFailed = true;
+                // Turn the flag off rather than only saying so.
+                //
+                // The warning below used to claim "mouse playback disabled" and
+                // nothing actually disabled it. The probe failing means rawX /
+                // rawY stay 0.0, so every sample recorded from here on carries
+                // the corner of the window - and on playback PlaybackTicker
+                // feeds those into SpatialGuiCompat every tick with
+                // captureMouse still true, pinning the recorded cursor to
+                // (0,0) for the whole replay. Clearing the flag makes the
+                // message true: PlaybackTicker then skips injection entirely
+                // and the screen still replays, just without a cursor.
+                ReplayUIConfig.captureMouse = false;
                 DebugLog.warn("could not read cursor position, "
                         + "mouse playback disabled for this session", t);
             }

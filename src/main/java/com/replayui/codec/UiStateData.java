@@ -74,4 +74,75 @@ public record UiStateData(
     public boolean isPlayerInventory() {
         return menuTypeId == PLAYER_INVENTORY;
     }
+
+    /**
+     * Value comparison, safe to use for de-duplication.
+     *
+     * <p>Deliberately not {@code equals}. {@code ItemStack} does <em>not</em>
+     * override it in 1.21.1 - the mapped method list has matches /
+     * isSameItem / isSameItemSameComponents and no equals - so the equals this
+     * record generates falls through to identity on every stack. And
+     * {@code UiStateReader} copies each stack every tick, so the comparison
+     * never matched: the de-dup in {@code UiSampler} silently never fired and a
+     * full sample was written 20 times a second for as long as a screen was
+     * open.
+     */
+    public boolean sameAs(UiStateData other) {
+        if (other == null) {
+            return false;
+        }
+        if (open != other.open || menuTypeId != other.menuTypeId) {
+            return false;
+        }
+        if (mouseX != other.mouseX || mouseY != other.mouseY) {
+            return false;
+        }
+        if (blockPos == null ? other.blockPos != null : !blockPos.equals(other.blockPos)) {
+            return false;
+        }
+        if (ownerUuid == null ? other.ownerUuid != null : !ownerUuid.equals(other.ownerUuid)) {
+            return false;
+        }
+        // Component has no dependable equals either; the rendered text is close
+        // enough for "did anything visible change", and it catches a container
+        // being renamed while it is open.
+        String thisTitle = title == null ? null : title.getString();
+        String otherTitle = other.title == null ? null : other.title.getString();
+        if (thisTitle == null ? otherTitle != null : !thisTitle.equals(otherTitle)) {
+            return false;
+        }
+        if (!sameStacks(items, other.items)) {
+            return false;
+        }
+        return sameStack(carried, other.carried);
+    }
+
+    private static boolean sameStacks(List<ItemStack> a, List<ItemStack> b) {
+        if (a == null || b == null) {
+            return a == b;
+        }
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (int i = 0; i < a.size(); i++) {
+            if (!sameStack(a.get(i), b.get(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Count is compared on its own rather than trusted to
+     * {@link ItemStack#matches}: whether that one covers the count has changed
+     * across versions and is not worth betting on. Taking half a stack out of a
+     * chest is the most common thing that happens in a container, so a
+     * comparison that could miss it is worse than a redundant check.
+     */
+    private static boolean sameStack(ItemStack a, ItemStack b) {
+        if (a == null || b == null) {
+            return a == b;
+        }
+        return a.getCount() == b.getCount() && ItemStack.matches(a, b);
+    }
 }

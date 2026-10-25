@@ -43,7 +43,11 @@ public class MixinLocalPlayerYaw {
             return;
         }
         AbstractClientPlayer spectating = Flashback.getSpectatingPlayer();
-        if (spectating != null) {
+        // Must not be this very entity. getSpectatingPlayer() can hand back the
+        // viewer's own entity, and then calling getYRot() on it re-enters this
+        // injection - which recurses forever and takes the game down with a
+        // StackOverflowError. Cheap identity test before the call.
+        if (spectating != null && spectating != (Object) this) {
             cir.setReturnValue(spectating.getYRot());
         }
     }
