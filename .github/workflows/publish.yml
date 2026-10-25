@@ -1,0 +1,29 @@
+name: Publish Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: 1fT6bPwt
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          curseforge-id: 1764744
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+          files: release/*.jar
+	  version-type: beta
+          changelog-file: CHANGELOG.md
