@@ -31,6 +31,9 @@ public final class UiStateReader {
     /** Reported once, so a broken cursor probe cannot warn every tick. */
     private static boolean mouseFailed = false;
 
+    /** Same for the menu-type probe - see {@link #capture}. */
+    private static boolean menuTypeFailed = false;
+
     private UiStateReader() {
     }
 
@@ -45,7 +48,22 @@ public final class UiStateReader {
             return UiStateData.closed(ownerUuid);
         }
 
-        MenuType<?> menuType = ((MenuTypeAccessor) menu).replayui$getMenuType();
+        // Guarded for exactly the reason the cursor probe below is: the cast
+        // failing would otherwise propagate to UiSampler's catch-all, which
+        // disables sampling for the whole session. Losing the menu type is
+        // survivable - the player's own inventory is identified by identity, not
+        // by its type, so that screen still records and still replays - whereas
+        // losing sampling takes every screen down with it.
+        MenuType<?> menuType = null;
+        try {
+            menuType = ((MenuTypeAccessor) menu).replayui$getMenuType();
+        } catch (Throwable t) {
+            if (!menuTypeFailed) {
+                menuTypeFailed = true;
+                DebugLog.warn("could not read the menu type, container screens will "
+                        + "not be replayed (the player's own inventory still will)", t);
+            }
+        }
 
         // The player's own inventory needs to be recognised here rather than by
         // its MenuType: vanilla never opens it through MenuScreens, so there is

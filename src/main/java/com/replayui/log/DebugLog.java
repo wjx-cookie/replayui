@@ -47,6 +47,17 @@ public final class DebugLog {
         }
     }
 
+    /**
+     * Same as {@link #verbose(String)} but keeps the stack trace available for
+     * the one place that wants it: a failure that is only interesting while
+     * debugging, so it must not turn into a warning in a normal session.
+     */
+    public static void verbose(String message, Throwable throwable) {
+        if (VERBOSE) {
+            LOGGER.info("[verbose] " + message, throwable);
+        }
+    }
+
     public static boolean isVerbose() {
         return VERBOSE;
     }

@@ -33,7 +33,15 @@ public final class ReplayUIConfig {
      */
     public static boolean syncYaw = false;
 
-    /** Record and replay cursor position. Requires Spatial GUI for the 3D mapping. */
+    /**
+     * Record and replay cursor position.
+     *
+     * <p>Plain 2D screens need nothing else installed: the coordinates go back
+     * into vanilla's MouseHandler, which is where the renderer gets the
+     * {@code mouseX / mouseY} it draws the cursor-held stack and hover with.
+     * Spatial GUI additionally maps them onto its 3D panel, which is what its
+     * own hover and tooltips read.
+     */
     public static boolean captureMouse = true;
 
     private ReplayUIConfig() {

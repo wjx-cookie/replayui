@@ -123,7 +123,10 @@ public final class ContainerScreenBuilder {
             // create() opened nothing, or something that is not a container -
             // most likely this menu type has no screen registered for it.
             if (screen != null) {
-                client.setScreen(null);
+                // `before`, not null: whatever create() managed to open is ours
+                // to undo, but the screen the viewer had up is not. Restoring
+                // null here would close their pause menu or chat along with it.
+                client.setScreen(before);
             }
             DebugLog.warn("no container screen registered for menu type " + data.menuTypeId()
                     + " - skipping");
@@ -132,7 +135,7 @@ public final class ContainerScreenBuilder {
 
         AbstractContainerMenu menu = ((AbstractContainerScreen<?>) screen).getMenu();
         if (menu == null) {
-            client.setScreen(null);
+            client.setScreen(before);
             DebugLog.warn("screen for menu type " + data.menuTypeId() + " has no menu");
             return null;
         }
@@ -140,7 +143,7 @@ public final class ContainerScreenBuilder {
         // Slot count must line up with what we recorded, otherwise the contents
         // would land in the wrong places.
         if (menu.slots.size() != data.items().size()) {
-            client.setScreen(null);
+            client.setScreen(before);
             DebugLog.warn("slot count mismatch: recorded " + data.items().size()
                     + " but this menu has " + menu.slots.size()
                     + " (menu type " + data.menuTypeId() + ") - skipping");
@@ -148,7 +151,7 @@ public final class ContainerScreenBuilder {
         }
 
         if (!fillMenu(menu, data.items(), data.carried())) {
-            client.setScreen(null);
+            client.setScreen(before);
             return null;
         }
 

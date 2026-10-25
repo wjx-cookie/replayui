@@ -5,6 +5,7 @@ import com.replayui.ReplayUIConfig;
 import com.replayui.codec.UiStateData;
 import com.replayui.compat.ExportCompat;
 import com.replayui.compat.SpatialGuiCompat;
+import com.replayui.compat.VanillaCursor;
 import com.replayui.log.DebugLog;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -395,6 +396,7 @@ public final class PlaybackTicker {
         // park the cursor in the corner rather than leaving it alone.
         if (ReplayUIConfig.captureMouse) {
             SpatialGuiCompat.injectMouse(data.mouseX(), data.mouseY());
+            VanillaCursor.inject(data.mouseX(), data.mouseY());
         }
     }
 
@@ -476,6 +478,14 @@ public final class PlaybackTicker {
         // So: only ever clean up after ourselves. When we never opened anything
         // there is nothing of ours to undo and the viewer is left alone.
         boolean hadOurs = ourScreen != null || rebuiltMenu != null || savedInventory != null;
+
+        // Put the viewer's real cursor back. VanillaCursor only overwrites the
+        // position while one of our screens is up, so this is both the right
+        // place and the only place it has to happen - and it covers every exit
+        // path, because they all come through here.
+        if (hadOurs) {
+            VanillaCursor.restore();
+        }
 
         LocalPlayer player = client.player;
 
