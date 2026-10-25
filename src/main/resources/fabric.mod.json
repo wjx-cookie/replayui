@@ -20,7 +20,7 @@
   "mixins": ["replayui.mixins.json"],
   "depends": {
     "fabricloader": ">=0.15",
-    "minecraft": "~1.21.1",
+    "minecraft": "1.21.1",
     "java": ">=21",
     "fabric-api": "*",
     "flashback": ">=0.39.0"
