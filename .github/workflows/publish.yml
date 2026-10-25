@@ -2,7 +2,8 @@ name: Publish Release
 
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -25,5 +26,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
           files: release/*.jar
-	  version-type: beta
+          version-type: beta
           changelog-file: CHANGELOG.md
+          fail-mode: warn
+          retry-attempts: 3
