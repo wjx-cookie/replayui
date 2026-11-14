@@ -8,7 +8,9 @@
     "MouseHandlerAccessor",
     "MixinRecorder",
     "MixinAbstractContainerScreen",
-    "MixinLocalPlayerYaw"
+    "MixinLocalPlayerYaw",
+    "MixinInventoryScreen",
+    "MixinContainerCursor"
   ],
   "injectors": {
     "defaultRequire": 0

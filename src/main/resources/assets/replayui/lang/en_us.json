@@ -1,6 +1,12 @@
 {
   "replayui.keybind.category": "ReplayUI",
   "replayui.keybind.toggle": "Toggle container UI replay",
+  "replayui.keybind.toggleui": "Show/hide container UI",
+  "replayui.keybind.detach": "Detach / Reattach",
   "replayui.toggle.on": "ReplayUI: on",
-  "replayui.toggle.off": "ReplayUI: off"
+  "replayui.toggle.off": "ReplayUI: off",
+  "replayui.ui.on": "ReplayUI: screens shown",
+  "replayui.ui.off": "ReplayUI: screens hidden",
+  "replayui.detach": "ReplayUI: detached, camera is yours and screens stay closed",
+  "replayui.reattach": "ReplayUI: reattached, container screens will show again"
 }

@@ -55,6 +55,19 @@ public final class PlaybackTicker {
     private static int dismissedMenuTypeId = UiStateData.NO_MENU_TYPE;
 
     /**
+     * Set by the detach key, cleared only by pressing it again or by leaving
+     * the replay.
+     *
+     * <p>Deliberately different from {@link #userDismissed}. That one is a
+     * momentary "not now" - the screen returns as soon as the recording shows
+     * something else. This one is the editor's decision and nothing in the
+     * recording overrides it: the whole point of detaching is to fly the camera
+     * without a container popping back up, so the recording opening another one
+     * is the exact thing being opted out of.
+     */
+    private static boolean detached = false;
+
+    /**
      * Set when another screen took the display away from ours, so we wait for
      * the display to come free instead of grabbing it straight back.
      */
@@ -159,6 +172,35 @@ public final class PlaybackTicker {
         }
     }
 
+    /**
+     * Whether a rebuilt screen should be on screen right now.
+     *
+     * <p>Two ways to say no, and they are different things:
+     *
+     * <ul>
+     *   <li>The dedicated hotkey, for hiding the screen and flying the camera
+     *       around. It stays off until it is switched back on - unlike
+     *       Escape/E, which only dismisses the screen until the recording shows
+     *       the next one.</li>
+     *   <li>F1, Minecraft's own "hide the interface". Flashback's editor obeys
+     *       the same flag, so hiding the GUI while lining up a shot now hides
+     *       both of them together instead of leaving a container floating over
+     *       an otherwise clean frame.</li>
+     * </ul>
+     *
+     * <p>Checking it here rather than at the top of the tick means the rest of
+     * the "nothing to show" path still runs: the screen that was up is taken
+     * down through {@code closeQuietly}, which is what hands the viewer back
+     * their inventory and their cursor. A screen hidden this way is not merely
+     * left invisible - it is properly closed.
+     */
+    private static boolean showContainerUi(Minecraft client) {
+        if (!ReplayUIConfig.showContainerUi || detached) {
+            return false;
+        }
+        return client.options == null || !client.options.hideGui;
+    }
+
     private static void tick(Minecraft client) {
         boolean inReplay = Flashback.isInReplay();
 
@@ -172,6 +214,7 @@ public final class PlaybackTicker {
                 // would suppress the first screen of the next one.
                 userDismissed = false;
                 dismissedMenuTypeId = UiStateData.NO_MENU_TYPE;
+                detached = false;
                 wasInReplay = false;
             }
             return;
@@ -190,7 +233,16 @@ public final class PlaybackTicker {
         }
 
         UiStateData data = PlaybackState.current();
-        boolean show = data != null && data.open() && PlaybackState.isTargetMatch(client);
+
+        // Nothing here clears {@link #detached}. Both ways it used to were
+        // wrong: a fresh container opening is what the editor detached to stop
+        // happening, and re-attaching through Flashback's own controls is their
+        // call to make, not ours to reinterpret on their behalf. Only the key
+        // again, or leaving the replay, ends it.
+        boolean recordedOpen = data != null && data.open();
+
+        boolean show = recordedOpen && PlaybackState.isTargetMatch(client)
+                && showContainerUi(client);
 
         if (!show) {
             closeQuietly(client);
@@ -390,13 +442,13 @@ public final class PlaybackTicker {
             }
         }
 
-        // Push the cursor after the screen exists: Spatial GUI resets to screen
-        // centre whenever a screen opens, so this has to be refreshed every tick.
-        // Skipped when mouse capture is off - injecting the recorded 0,0 would
-        // park the cursor in the corner rather than leaving it alone.
+        // Refreshed every tick: Spatial GUI resets to screen centre whenever a
+        // screen opens, and the recorded cursor moves on its own anyway.
+        // Skipped when mouse capture is off - a recorded 0,0 would park the
+        // cursor in the corner rather than leaving the screen alone.
         if (ReplayUIConfig.captureMouse) {
             SpatialGuiCompat.injectMouse(data.mouseX(), data.mouseY());
-            VanillaCursor.inject(data.mouseX(), data.mouseY());
+            VanillaCursor.update(data.mouseX(), data.mouseY());
         }
     }
 
@@ -463,6 +515,67 @@ public final class PlaybackTicker {
         }
     }
 
+    /**
+     * The detach key: take the screen down, hand the camera back, and keep the
+     * screen down until the editor says otherwise.
+     *
+     * <p>This is the way out of a screen the editor cannot otherwise drive.
+     * While one is up the viewer's clicks and keys are swallowed, so without a
+     * key of its own the only move would be Escape - and Escape only hides the
+     * current screen, which comes straight back.
+     *
+     * <p>Pressing it a second time is the only way back. Nothing the recording
+     * does re-enables it, because flying the camera with a container opening
+     * itself every few seconds is exactly what detaching is for.
+     *
+     * @return {@code true} if this press detached, {@code false} if it put the
+     *         screen replay back on.
+     */
+    public static boolean detach() {
+        try {
+            Minecraft client = Minecraft.getInstance();
+
+            if (detached) {
+                // Second press: the editor wants the screens back.
+                //
+                // The camera is deliberately left wherever they flew it. Free
+                // flight is not a mistake to undo, and following someone again
+                // is Flashback's own control to reach for.
+                detached = false;
+                DebugLog.info("re-attached: screen replay on again");
+                return false;
+            }
+
+            detached = true;
+            closeQuietly(client);
+
+            // Hand the camera back too, which is the whole point of the key.
+            //
+            // Flashback decides "the editor is spectating someone" by looking at
+            // the camera entity: getSpectatingPlayer() returns that player only
+            // while the camera entity is somebody other than the viewer
+            // (Flashback.java:1065). So pointing the camera at the viewer's own
+            // entity is what ends spectating and restores the free camera - and
+            // it is the very call Flashback makes when it moves the camera
+            // itself (Flashback.java:518), just with our own entity instead.
+            //
+            // Doing it here rather than leaving it to the editor matters because
+            // a rebuilt screen swallows clicks and drags: while one is up, the
+            // editor cannot fly the camera, because Flashback's camera drag
+            // works by dragging in the world. Hiding the screen is not enough,
+            // it has to be the camera that comes back.
+            if (client.player != null) {
+                client.setCameraEntity(client.player);
+            }
+
+            DebugLog.info("detached: screen closed, camera returned to free flight");
+            return true;
+        } catch (Throwable t) {
+            DebugLog.warn("error while detaching", t);
+            return detached;
+        }
+    }
+
     private static void closeQuietly(Minecraft client) {
         // Order matters, and so does not doing this at all when it is not our
         // turn.
@@ -479,12 +592,12 @@ public final class PlaybackTicker {
         // there is nothing of ours to undo and the viewer is left alone.
         boolean hadOurs = ourScreen != null || rebuiltMenu != null || savedInventory != null;
 
-        // Put the viewer's real cursor back. VanillaCursor only overwrites the
-        // position while one of our screens is up, so this is both the right
-        // place and the only place it has to happen - and it covers every exit
-        // path, because they all come through here.
+        // Stop drawing the screen from the recorded cursor. There is no
+        // position to hand back - the viewer's own pointer was never moved -
+        // but the recorded one belongs to a screen that is going away, and
+        // every exit path comes through here.
         if (hadOurs) {
-            VanillaCursor.restore();
+            VanillaCursor.clear();
         }
 
         LocalPlayer player = client.player;
@@ -560,5 +673,13 @@ public final class PlaybackTicker {
      */
     public static boolean isRebuiltMenu(AbstractContainerMenu menu) {
         return menu != null && menu == rebuiltMenu;
+    }
+
+    /**
+     * Whether a screen is the one we rebuilt, so render hooks can tell it apart
+     * from an inventory the viewer opened themselves.
+     */
+    public static boolean isOurScreen(Screen screen) {
+        return screen != null && screen == ourScreen;
     }
 }

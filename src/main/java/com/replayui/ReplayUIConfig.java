@@ -44,6 +44,45 @@ public final class ReplayUIConfig {
      */
     public static boolean captureMouse = true;
 
+    /**
+     * Whether a rebuilt screen is put on screen at all, during playback only.
+     *
+     * <p>Deliberately <em>not</em> the same as {@link #enabled}: that one stops
+     * the recording side too, because a recording taken while it was off would
+     * have no UI data in it and could not be replayed. This one is playback
+     * only, so hiding the screen to fly the camera around never risks losing
+     * data from a recording that happens to be in progress.
+     *
+     * <p>This is also the difference from pressing Escape or E. Those dismiss
+     * the current screen but it comes back as soon as the recording shows the
+     * player opening something else; this stays off until it is turned back on.
+     */
+    public static boolean showContainerUi = true;
+
+    /**
+     * Draw the recorded player in a rebuilt inventory instead of the viewer.
+     *
+     * <p>The little figure in the inventory screen is rendered from
+     * {@code Minecraft.player}, which during a replay is the viewer's own
+     * spectator entity. Off leaves that untouched, for cases where the figure
+     * comes out wrong and the rest of the screen is still wanted.
+     */
+    public static boolean showRecordedPlayer = true;
+
+    /**
+     * Draw a pointer of their own for the recorded player inside the screen.
+     *
+     * <p>Vanilla leaves the cursor to the operating system, so a rebuilt screen
+     * shows where the recorded player was pointing only through the stack they
+     * were holding - and with an empty hand, not at all. This draws an arrow
+     * for them.
+     *
+     * <p>It is drawn through the same {@code GuiGraphics} the screen uses, so a
+     * screen that is transformed - Spatial GUI's floating 3D panel most of all -
+     * takes the arrow with it. Off leaves the screen exactly as it was.
+     */
+    public static boolean showCursorIcon = true;
+
     private ReplayUIConfig() {
     }
 }

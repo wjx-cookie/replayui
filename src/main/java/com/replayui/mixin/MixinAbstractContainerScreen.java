@@ -1,6 +1,7 @@
 package com.replayui.mixin;
 
 import com.replayui.ReplayUIIds;
+import com.replayui.ReplayUIKeybinds;
 import com.replayui.playback.PlaybackTicker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -29,6 +30,8 @@ public class MixinAbstractContainerScreen {
     /** GLFW key codes, kept as literals so this mixin needs no extra imports. */
     private static final int GLFW_KEY_ESCAPE = 256;
     private static final int GLFW_KEY_E = 69;
+    private static final int GLFW_KEY_F1 = 290;
+    private static final int GLFW_KEY_F25 = 314;
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true, require = 0)
     private void replayui$blockMouseClicked(double mouseX, double mouseY, int button,
@@ -55,6 +58,21 @@ public class MixinAbstractContainerScreen {
         }
     }
 
+    /**
+     * The wheel is the one input the hooks below did not cover. It is what
+     * pages through a creative tab or scrolls a list, so leaving it live would
+     * let the editor change what the screen is showing - the one thing that is
+     * supposed to be impossible while a recording is driving it.
+     */
+    @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true, require = 0)
+    private void replayui$blockMouseScrolled(double mouseX, double mouseY, double scrollX,
+                                             double scrollY,
+                                             CallbackInfoReturnable<Boolean> cir) {
+        if (replayui$isOurs()) {
+            cir.setReturnValue(true);
+        }
+    }
+
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true, require = 0)
     private void replayui$blockKeyPressed(int keyCode, int scanCode, int modifiers,
                                           CallbackInfoReturnable<Boolean> cir) {
@@ -70,6 +88,22 @@ public class MixinAbstractContainerScreen {
             cir.setReturnValue(true);
             return;
         }
+
+        // Let our own hotkeys and the function keys through untouched.
+        //
+        // Returning true here stops the keyboard handler from reaching the
+        // keybinding pass, and our bindings are polled with consumeClick() from
+        // a client tick - so swallowing them would make the detach key silently
+        // dead exactly when it is most needed, i.e. while a screen is open.
+        //
+        // F1..F25 is the same range Flashback forces through to the game
+        // (CustomImGuiImplGlfw), so matching it keeps F1 - the hide-GUI toggle
+        // that also hides our screens - consistent with the editor.
+        if (ReplayUIKeybinds.isReservedKey(keyCode, scanCode)
+                || (keyCode >= GLFW_KEY_F1 && keyCode <= GLFW_KEY_F25)) {
+            return;
+        }
+
         cir.setReturnValue(true);
     }
 

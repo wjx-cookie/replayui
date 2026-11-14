@@ -1,99 +1,99 @@
 package com.replayui.compat;
 
-import com.replayui.log.DebugLog;
-import com.replayui.mixin.MouseHandlerAccessor;
+import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
 
 /**
- * Feeds the recorded cursor back into vanilla's own MouseHandler.
+ * Holds the recorded cursor so the rebuilt screen can be drawn from it.
  *
- * <p>This is the path that matters without Spatial GUI. SpatialGuiCompat only
- * writes into Spatial GUI's own cache and quietly does nothing when that mod is
- * absent, so on a plain 2D screen the recorded coordinates were thrown away and
- * the renderer fell back to the viewer's real pointer.
+ * <p>Two cursors, two separate territories. The editor keeps their own pointer
+ * - it is what flies the camera and what drives Flashback's own editor UI -
+ * and the recorded player gets a cursor of their own inside the rebuilt screen.
+ * Nothing here touches the viewer's pointer, so the two never fight.
  *
- * <p>Writing the raw window position is enough: vanilla derives the scaled
- * {@code mouseX / mouseY} passed to {@code Screen#render} from these fields,
- * and that is what positions the stack floating under the cursor, the hovered
- * slot highlight and tooltips.
+ * <p>That is why this used to be a write into {@code MouseHandler} and now is
+ * not. Overwriting {@code xpos / ypos} does move the drawn stack, but those two
+ * fields are also the pair vanilla subtracts the next GLFW position from to
+ * work out how far the mouse moved. Once they hold a recorded position, the
+ * first time the editor moves their own mouse the difference is the whole gap
+ * between the two - reported as viewer input, which swings the camera across
+ * the replay. Taking the recorded coordinates in at
+ * {@code AbstractContainerScreen#render} instead leaves the handler alone:
+ * the screen is drawn from the recorded cursor, and movement deltas, camera
+ * work and Flashback's editor all keep reading the viewer's real one.
  *
- * <p>The viewer's own pointer is not otherwise disturbed: turning the camera
- * uses accumulated movement deltas, not these fields.
+ * <p>Flashback's editor UI is unaffected either way: it is ImGui, fed by its
+ * own GLFW cursor callback with its own stored position, and never reads the
+ * handler.
  */
 public final class VanillaCursor {
 
-    private static boolean failed;
-
-    /** Viewer's real position, captured once before the first overwrite. */
-    private static boolean saved;
-    private static double savedX;
-    private static double savedY;
+    private static boolean active;
+    private static int x;
+    private static int y;
 
     private VanillaCursor() {
     }
 
-    public static void inject(double rawX, double rawY) {
-        // A cast that cannot work will not start working. `failed` alone only
-        // silences the message - inject() is still called every tick of every
-        // replay, which is 20 failed casts a second, each building a stack
-        // trace, for a cursor that will never appear.
-        if (failed) {
-            return;
-        }
+    /**
+     * Called once per tick while one of our screens is up.
+     *
+     * <p>Recorded values are raw window pixels, which is what
+     * {@code MouseHandler} stores; {@code Screen#render} is handed GUI
+     * coordinates instead. Converting here keeps the two sides honest if the
+     * window is a different size or scale during playback.
+     */
+    public static void update(double rawX, double rawY) {
         Minecraft client = Minecraft.getInstance();
-        if (client == null || client.mouseHandler == null) {
+        if (client == null) {
             return;
         }
-        try {
-            MouseHandlerAccessor mouse = (MouseHandlerAccessor) client.mouseHandler;
-            if (!saved) {
-                savedX = mouse.replayui$getXpos();
-                savedY = mouse.replayui$getYpos();
-                saved = true;
-            }
-            mouse.replayui$setXpos(rawX);
-            mouse.replayui$setYpos(rawY);
-        } catch (Throwable t) {
-            if (!failed) {
-                failed = true;
-                // Note: deliberately NOT clearing ReplayUIConfig.captureMouse.
-                // UiStateReader does that on the recording side, and
-                // UiSampler reads the same flag to decide whether to zero the
-                // recorded coordinates - so clearing it here for a playback
-                // failure would silently strip the cursor out of every
-                // recording made afterwards in the same session. The early
-                // return below is what actually stops the retries.
-                DebugLog.warn("could not write cursor position, "
-                        + "mouse replay disabled for this session", t);
-            }
+        Window window = client.getWindow();
+        if (window == null) {
+            return;
         }
+        double scale = window.getGuiScale();
+        if (scale <= 0.0) {
+            return;
+        }
+        x = (int) Math.round(rawX / scale);
+        y = (int) Math.round(rawY / scale);
+        active = true;
     }
 
     /**
-     * Puts the viewer's pointer back where it was.
+     * Stops replacing the coordinates.
      *
-     * <p>Called from the same place that closes the rebuilt screen, so every
-     * exit path is covered. Without it the cursor stays parked at the last
-     * recorded spot after the screen goes away - and since these fields are
-     * only updated by GLFW when the mouse actually moves, a viewer who never
-     * touched the mouse would find hover and tooltips on their own screens
-     * reading a stale position until they jiggled it.
+     * <p>There is no position to put back: the viewer's own was never touched.
+     * This only stops the rebuilt screen from being drawn from a cursor that
+     * belongs to a recording no longer on screen.
      */
-    public static void restore() {
-        if (!saved) {
-            return;
-        }
-        saved = false;
-        Minecraft client = Minecraft.getInstance();
-        if (client == null || client.mouseHandler == null) {
-            return;
-        }
-        try {
-            MouseHandlerAccessor mouse = (MouseHandlerAccessor) client.mouseHandler;
-            mouse.replayui$setXpos(savedX);
-            mouse.replayui$setYpos(savedY);
-        } catch (Throwable t) {
-            DebugLog.verbose("could not restore cursor position", t);
-        }
+    public static void clear() {
+        active = false;
+    }
+
+    /** Recorded X, or the viewer's own when nothing is being replayed. */
+    public static int replaceX(int viewerX) {
+        return active ? x : viewerX;
+    }
+
+    /** Whether a recorded position is being replayed at all. */
+    public static boolean isActive() {
+        return active;
+    }
+
+    /** Recorded X in GUI coordinates. Only meaningful while {@link #isActive()}. */
+    public static int recordedX() {
+        return x;
+    }
+
+    /** Recorded Y in GUI coordinates. Only meaningful while {@link #isActive()}. */
+    public static int recordedY() {
+        return y;
+    }
+
+    /** Recorded Y, or the viewer's own when nothing is being replayed. */
+    public static int replaceY(int viewerY) {
+        return active ? y : viewerY;
     }
 }
