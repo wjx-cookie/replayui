@@ -30,12 +30,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(AbstractContainerScreen.class)
 public class MixinContainerCursor {
 
-    @ModifyVariable(method = "render", at = @At("HEAD"), ordinal = 1, argsOnly = true, require = 0)
+    @ModifyVariable(method = "render", at = @At("HEAD"), ordinal = 0, argsOnly = true, require = 0)
     private int replayui$cursorX(int mouseX) {
         return replayui$ours() ? VanillaCursor.replaceX(mouseX) : mouseX;
     }
 
-    @ModifyVariable(method = "render", at = @At("HEAD"), ordinal = 2, argsOnly = true, require = 0)
+    @ModifyVariable(method = "render", at = @At("HEAD"), ordinal = 1, argsOnly = true, require = 0)
     private int replayui$cursorY(int mouseY) {
         return replayui$ours() ? VanillaCursor.replaceY(mouseY) : mouseY;
     }
