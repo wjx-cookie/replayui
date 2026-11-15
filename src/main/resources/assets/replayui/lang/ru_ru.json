@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Переключить воспроизведение интерфейсов контейнеров",
+  "replayui.keybind.toggleui": "Показать/скрыть интерфейсы контейнеров",
+  "replayui.keybind.detach": "Отсоединиться / Присоединиться",
+  "replayui.toggle.on": "ReplayUI: включено",
+  "replayui.toggle.off": "ReplayUI: выключено",
+  "replayui.ui.on": "ReplayUI: интерфейсы показаны",
+  "replayui.ui.off": "ReplayUI: интерфейсы скрыты",
+  "replayui.detach": "ReplayUI: отсоединено, камера свободна, интерфейсы не открываются автоматически",
+  "replayui.reattach": "ReplayUI: присоединено снова, интерфейсы контейнеров снова будут показаны"
+}

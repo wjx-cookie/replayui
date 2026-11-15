@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Container-UI-weergave in-/uitschakelen",
+  "replayui.keybind.toggleui": "Container-UI tonen/verbergen",
+  "replayui.keybind.detach": "Loskoppelen / Opnieuw koppelen",
+  "replayui.toggle.on": "ReplayUI: aan",
+  "replayui.toggle.off": "ReplayUI: uit",
+  "replayui.ui.on": "ReplayUI: schermen zichtbaar",
+  "replayui.ui.off": "ReplayUI: schermen verborgen",
+  "replayui.detach": "ReplayUI: losgekoppeld, camera is vrij en schermen blijven gesloten",
+  "replayui.reattach": "ReplayUI: opnieuw gekoppeld, containerschermen verschijnen weer"
+}

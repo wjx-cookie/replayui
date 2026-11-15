@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Перемкнути відтворення інтерфейсів контейнерів",
+  "replayui.keybind.toggleui": "Показати/сховати інтерфейси контейнерів",
+  "replayui.keybind.detach": "Від'єднатися / Приєднатися",
+  "replayui.toggle.on": "ReplayUI: увімкнено",
+  "replayui.toggle.off": "ReplayUI: вимкнено",
+  "replayui.ui.on": "ReplayUI: інтерфейси показано",
+  "replayui.ui.off": "ReplayUI: інтерфейси приховано",
+  "replayui.detach": "ReplayUI: від'єднано, камера вільна, інтерфейси не відкриваються автоматично",
+  "replayui.reattach": "ReplayUI: приєднано знову, інтерфейси контейнерів знову показуватимуться"
+}

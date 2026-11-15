@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Přepnout přehrávání rozhraní kontejnerů",
+  "replayui.keybind.toggleui": "Zobrazit/skrýt rozhraní kontejnerů",
+  "replayui.keybind.detach": "Odpojit / Znovu připojit",
+  "replayui.toggle.on": "ReplayUI: zapnuto",
+  "replayui.toggle.off": "ReplayUI: vypnuto",
+  "replayui.ui.on": "ReplayUI: rozhraní zobrazena",
+  "replayui.ui.off": "ReplayUI: rozhraní skryta",
+  "replayui.detach": "ReplayUI: odpojeno, kamera je volná a rozhraní zůstávají zavřená",
+  "replayui.reattach": "ReplayUI: znovu připojeno, rozhraní kontejnerů se opět zobrazí"
+}

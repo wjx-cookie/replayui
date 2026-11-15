@@ -1,6 +1,7 @@
 package com.replayui.record;
 
 import com.replayui.ReplayUIConfig;
+import com.replayui.codec.ScreenExtras;
 import com.replayui.codec.UiStateData;
 import com.replayui.log.DebugLog;
 import com.replayui.mixin.MenuTypeAccessor;
@@ -39,14 +40,25 @@ public final class UiStateReader {
 
     public static UiStateData capture(Minecraft client, UUID ownerUuid) {
         Screen screen = client.screen;
+        // Creative / horse / lectern are handled before the container test.
+        // Returning early here leaves the existing instanceof line untouched.
+        int specialKind = SpecialScreenReader.kindOf(screen);
+        if (specialKind != SpecialScreenReader.NONE) {
+            return SpecialScreenReader.capture(client, screen, specialKind, ownerUuid);
+        }
         if (!(screen instanceof AbstractContainerScreen<?> containerScreen)) {
+            AbstractContainerMenu fallback = client.player == null
+                    ? null : client.player.containerMenu;
+            RecordedDataSlots.bind(fallback == null ? -1 : fallback.containerId);
             return UiStateData.closed(ownerUuid);
         }
 
         AbstractContainerMenu menu = containerScreen.getMenu();
         if (menu == null) {
+            RecordedDataSlots.bind(-1);
             return UiStateData.closed(ownerUuid);
         }
+        RecordedDataSlots.bind(menu.containerId);
 
         // Guarded for exactly the reason the cursor probe below is: the cast
         // failing would otherwise propagate to UiSampler's catch-all, which
@@ -129,9 +141,25 @@ public final class UiStateReader {
             }
         }
 
+        // Record the window the raw mouse pixels came from. Playback (and
+        // video export) can render at a different resolution, so a plain
+        // divide-by-current-gui-scale would put the cursor in the wrong place.
+        int winW = 0;
+        int winH = 0;
+        try {
+            com.mojang.blaze3d.platform.Window window = client.getWindow();
+            if (window != null) {
+                winW = window.getWidth();
+                winH = window.getHeight();
+            }
+        } catch (Throwable ignored) {
+            // Fall back to the scale-only path in VanillaCursor.update.
+        }
+
         // blockPos left null: positioning is solved by aligning the viewer's
         // yaw with the recorded player, so the block is not needed.
         return new UiStateData(ownerUuid, true, menuTypeId, containerScreen.getTitle(),
-                items, carried, menu.containerId, rawX, rawY, null);
+                items, carried, menu.containerId, rawX, rawY, null,
+                RecordedDataSlots.snapshot(), winW, winH, ScreenExtras.EMPTY);
     }
 }

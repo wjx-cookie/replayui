@@ -28,6 +28,19 @@ import java.util.List;
 public final class PlaybackTicker {
 
     private static Screen ourScreen = null;
+
+    /**
+     * Screen mounted only while one exported frame is being rendered.
+     *
+     * <p>Deliberately separate from {@link #ourScreen}: that one is a screen
+     * that stays open across ticks and is driven by the normal rebuild path.
+     * This one lives for a single GameRenderer#render call and is gone before
+     * ExportJob's "wait until screen == null" loop can see it. Render hooks
+     * must still recognise it as ours, or the recorded cursor, its icon and
+     * the recorded player figure would all drop out of the exported frame.
+     */
+    private static Screen exportScreen = null;
+
     private static int ourMenuTypeId = UiStateData.NO_MENU_TYPE;
     private static boolean wasInReplay = false;
 
@@ -221,13 +234,28 @@ public final class PlaybackTicker {
         }
         wasInReplay = true;
 
-        // A stereo 3D export is running: the addon renders the world twice and
-        // suppresses GUI rendering itself, so anything we put on screen now is
-        // at best invisible and at worst baked into a frame that must not have
-        // it. Take down whatever is open and stay out of the way until it ends.
+        // Flashback is exporting. Its ExportJob waits while screen != null and
+        // force-clears it after five seconds, so a rebuilt screen must NOT be
+        // left on client.screen between frames - that would stall every export.
+        //
+        // Instead the screen exists only for the duration of one captured
+        // frame: MixinGameRenderer mounts it at the head of GameRenderer#render
+        // and takes it down at the tail, which is exactly where Flashback calls
+        // finishFrame on the framebuffer. The guard here is the cleanup path:
+        // it undoes anything a frame left behind and restores the viewer's
+        // inventory before the next one is built.
         if (ExportCompat.isExporting()) {
-            if (ourScreen != null) {
-                closeQuietly(client);
+            endExportFrame(client);
+            closeQuietly(client);
+
+            // closeQuietly() clears the recorded cursor, and that cursor still
+            // has to be live while the exported frame's screen is rendering.
+            // Refresh it here, after the cleanup, so the stack riding on the
+            // recorded pointer and the pointer icon both land in the video.
+            UiStateData exportData = PlaybackState.current();
+            if (exportData != null && ReplayUIConfig.captureMouse) {
+                VanillaCursor.update(exportData.mouseX(), exportData.mouseY(),
+                    exportData.windowWidth(), exportData.windowHeight());
             }
             return;
         }
@@ -448,7 +476,8 @@ public final class PlaybackTicker {
         // cursor in the corner rather than leaving the screen alone.
         if (ReplayUIConfig.captureMouse) {
             SpatialGuiCompat.injectMouse(data.mouseX(), data.mouseY());
-            VanillaCursor.update(data.mouseX(), data.mouseY());
+            VanillaCursor.update(data.mouseX(), data.mouseY(),
+                    data.windowWidth(), data.windowHeight());
         }
     }
 
@@ -465,6 +494,12 @@ public final class PlaybackTicker {
      */
     private static boolean contentsChanged(UiStateData applied, UiStateData recorded) {
         if (applied == null) {
+            return true;
+        }
+
+        // Creative scroll / search / page changes and lectern page turns do
+        // not touch any slot, so without this the screen would never refresh.
+        if (!java.util.Objects.equals(applied.extras(), recorded.extras())) {
             return true;
         }
 
@@ -676,10 +711,95 @@ public final class PlaybackTicker {
     }
 
     /**
+     * Mount the rebuilt container for the frame Flashback is about to capture.
+     *
+     * <p>Called from MixinGameRenderer at the head of
+     * {@code GameRenderer#render}. Flashback's export loop clears every screen
+     * before rendering a frame, precisely because GameRenderer draws
+     * {@code Minecraft.screen} into the framebuffer. Putting ours back for just
+     * this one call is what makes the container appear in the exported video;
+     * taking it down at the tail keeps the loop from ever waiting on it.
+     *
+     * <p>All the existing render hooks apply automatically: the screen is an
+     * ordinary AbstractContainerScreen, so MixinContainerCursor swaps its
+     * coordinates, RecordedCursorIcon draws the second pointer, and
+     * MixinInventoryScreen draws the recorded player. Nothing here re-implements
+     * any of that.
+     */
+    public static void beginExportFrame(Minecraft client) {
+        exportScreen = null;
+        if (client == null || !ReplayUIConfig.enabled
+                || !ReplayUIConfig.includeUiInExport
+                || !ExportCompat.isExporting()
+                || ExportCompat.exportHidesGui()) {
+            return;
+        }
+        // The same two "no UI" decisions the normal path honours. F1 in
+        // particular must win: it is the editor's way of getting a clean frame.
+        if (!ReplayUIConfig.showContainerUi || detached
+                || (client.options != null && client.options.hideGui)) {
+            return;
+        }
+
+        UiStateData data = PlaybackState.current();
+        if (data == null || !data.open() || !PlaybackState.isTargetMatch(client)) {
+            return;
+        }
+
+        LocalPlayer viewer = client.player;
+        if (viewer == null) {
+            return;
+        }
+        // build() writes the recorded contents into the viewer's real
+        // inventory (the player-inventory route always does). Snapshot it so
+        // the export guard can put it back before the next frame.
+        if (savedInventory == null) {
+            savedInventory = InventorySnapshot.of(viewer);
+        }
+
+        if (ReplayUIConfig.captureMouse) {
+            VanillaCursor.update(data.mouseX(), data.mouseY(),
+                    data.windowWidth(), data.windowHeight());
+        }
+
+        Screen built = ContainerScreenBuilder.build(client, data);
+        if (built == null) {
+            return;
+        }
+        exportScreen = built;
+        // MenuScreens.create installs the screen itself on the container route;
+        // the player-inventory route hands back a bare screen. Only call
+        // setScreen when needed, so a rebuilt screen is not torn down and
+        // re-initialised twice in one frame.
+        if (client.screen != built) {
+            client.setScreen(built);
+        }
+    }
+
+    /**
+     * Take the exported frame's screen down again, before anything outside
+     * GameRenderer#render can observe a non-null screen.
+     *
+     * <p>Safe to call repeatedly, including from the export guard on the next
+     * tick: if Flashback cancelled the GUI half of render with "No GUI", the
+     * tail hook never runs and this is what cleans up the leftover.
+     */
+    public static void endExportFrame(Minecraft client) {
+        Screen mounted = exportScreen;
+        exportScreen = null;
+        if (mounted == null || client == null) {
+            return;
+        }
+        if (client.screen == mounted) {
+            client.setScreen(null);
+        }
+    }
+
+    /**
      * Whether a screen is the one we rebuilt, so render hooks can tell it apart
      * from an inventory the viewer opened themselves.
      */
     public static boolean isOurScreen(Screen screen) {
-        return screen != null && screen == ourScreen;
+        return screen != null && (screen == ourScreen || screen == exportScreen);
     }
 }

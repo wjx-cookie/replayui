@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Attiva/disattiva riproduzione interfacce contenitore",
+  "replayui.keybind.toggleui": "Mostra/nascondi interfacce contenitore",
+  "replayui.keybind.detach": "Stacca / Riattacca",
+  "replayui.toggle.on": "ReplayUI: attivo",
+  "replayui.toggle.off": "ReplayUI: disattivato",
+  "replayui.ui.on": "ReplayUI: interfacce visibili",
+  "replayui.ui.off": "ReplayUI: interfacce nascoste",
+  "replayui.detach": "ReplayUI: staccato, la camera è libera e le interfacce restano chiuse",
+  "replayui.reattach": "ReplayUI: riattaccato, le interfacce contenitore riappariranno"
+}

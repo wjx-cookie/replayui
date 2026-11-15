@@ -2,6 +2,7 @@ package com.replayui.mixin;
 
 import com.replayui.compat.VanillaCursor;
 import com.replayui.playback.PlaybackTicker;
+import com.replayui.render.ItemFlightAnimator;
 import com.replayui.render.RecordedCursorIcon;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -58,5 +59,7 @@ public class MixinContainerCursor {
     private void replayui$drawRecordedCursor(GuiGraphics guiGraphics, int mouseX, int mouseY,
                                              float partialTick, CallbackInfo ci) {
         RecordedCursorIcon.drawIfNeeded(guiGraphics, replayui$ours());
+        ItemFlightAnimator.draw(guiGraphics,
+                (AbstractContainerScreen<?>) (Object) this, replayui$ours());
     }
 }

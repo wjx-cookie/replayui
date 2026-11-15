@@ -10,7 +10,10 @@
     "MixinAbstractContainerScreen",
     "MixinLocalPlayerYaw",
     "MixinInventoryScreen",
-    "MixinContainerCursor"
+    "MixinContainerCursor",
+    "MixinGameRenderer",
+    "MixinAbstractContainerMenu",
+    "ContainerScreenAccessor"
   ],
   "injectors": {
     "defaultRequire": 0

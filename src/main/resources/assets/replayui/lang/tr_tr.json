@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Konteyner arayüzü oynatımını aç/kapat",
+  "replayui.keybind.toggleui": "Konteyner arayüzünü göster/gizle",
+  "replayui.keybind.detach": "Bağlantıyı kes / Yeniden bağlan",
+  "replayui.toggle.on": "ReplayUI: açık",
+  "replayui.toggle.off": "ReplayUI: kapalı",
+  "replayui.ui.on": "ReplayUI: arayüzler görünüyor",
+  "replayui.ui.off": "ReplayUI: arayüzler gizli",
+  "replayui.detach": "ReplayUI: bağlantı kesildi, kamera serbest ve arayüzler kapalı kalıyor",
+  "replayui.reattach": "ReplayUI: yeniden bağlandı, konteyner arayüzleri tekrar görünecek"
+}

@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "컨테이너 UI 재생 전환",
+  "replayui.keybind.toggleui": "컨테이너 UI 표시/숨기기",
+  "replayui.keybind.detach": "부착 해제 / 재부착",
+  "replayui.toggle.on": "ReplayUI: 켜짐",
+  "replayui.toggle.off": "ReplayUI: 꺼짐",
+  "replayui.ui.on": "ReplayUI: 화면 표시됨",
+  "replayui.ui.off": "ReplayUI: 화면 숨겨짐",
+  "replayui.detach": "ReplayUI: 부착이 해제되었습니다. 카메라가 자유롭고 화면은 자동으로 열리지 않습니다",
+  "replayui.reattach": "ReplayUI: 다시 부착했습니다. 컨테이너 화면이 다시 표시됩니다"
+}

@@ -35,6 +35,13 @@ import java.util.UUID;
  * @param mouseY      raw window cursor position
  * @param blockPos    block the container is attached to; currently unused,
  *                    kept so the format can grow without a version bump
+ * @param dataSlots   integer progress values (furnace burn/arrow, brewing
+ *                    bubbles, enchantment costs, anvil cost, beacon level).
+ *                    Vanilla screens read these from the menu itself, so
+ *                    restoring them is all that is needed. Empty for menus
+ *                    that have none.
+ * @param windowWidth raw window width the mouse coordinates were captured in
+ * @param windowHeight raw window height the mouse coordinates were captured in
  */
 public record UiStateData(
         UUID ownerUuid,
@@ -46,7 +53,11 @@ public record UiStateData(
         int containerId,
         double mouseX,
         double mouseY,
-        BlockPos blockPos
+        BlockPos blockPos,
+        int[] dataSlots,
+        int windowWidth,
+        int windowHeight,
+        ScreenExtras extras
 ) {
 
     public static final int NO_MENU_TYPE = -1;
@@ -62,9 +73,33 @@ public record UiStateData(
      */
     public static final int PLAYER_INVENTORY = -2;
 
+    /**
+     * The creative inventory is built client-side with no MenuType and no
+     * server menu at all. It gets a marker id and its own rebuild path.
+     */
+    public static final int CREATIVE_INVENTORY = -3;
+
+    /**
+     * A lectern book is a BookViewScreen, not an AbstractContainerScreen: no
+     * slots, no carried stack, no MenuType. Marker id, separate rebuild path.
+     */
+    public static final int LECTERN_SCREEN = -4;
+
+    /** Horse/llama inventories keep their real registry id and only carry an
+     *  entity reference in {@link ScreenExtras}. */
+    public static boolean hasHorseEntity(ScreenExtras extras) {
+        return extras != null && extras.hasEntity();
+    }
+
     public static UiStateData closed(UUID ownerUuid) {
         return new UiStateData(ownerUuid, false, NO_MENU_TYPE, Component.empty(),
-                List.of(), ItemStack.EMPTY, 0, 0.0, 0.0, null);
+                List.of(), ItemStack.EMPTY, 0, 0.0, 0.0, null, new int[0], 0, 0,
+                ScreenExtras.EMPTY);
+    }
+
+    /** Screens that cannot be rebuilt through the MenuType registry. */
+    public boolean isSpecialScreen() {
+        return menuTypeId == CREATIVE_INVENTORY || menuTypeId == LECTERN_SCREEN;
     }
 
     public boolean hasMenuType() {
@@ -109,6 +144,15 @@ public record UiStateData(
         String thisTitle = title == null ? null : title.getString();
         String otherTitle = other.title == null ? null : other.title.getString();
         if (thisTitle == null ? otherTitle != null : !thisTitle.equals(otherTitle)) {
+            return false;
+        }
+        if (!java.util.Arrays.equals(dataSlots, other.dataSlots)) {
+            return false;
+        }
+        if (windowWidth != other.windowWidth || windowHeight != other.windowHeight) {
+            return false;
+        }
+        if (!java.util.Objects.equals(extras, other.extras)) {
             return false;
         }
         if (!sameStacks(items, other.items)) {

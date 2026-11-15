@@ -42,6 +42,12 @@ public final class UiStateCodec {
      */
     public static final int MAX_SLOTS_PER_SCREEN = 1024;
 
+    /** Bound on progress values; vanilla menus use fewer than ten. */
+    public static final int MAX_DATA_SLOTS = 64;
+
+    /** Bound on book pages; a vanilla book caps well below this. */
+    public static final int MAX_BOOK_PAGES = 64;
+
     private UiStateCodec() {
     }
 
@@ -89,6 +95,34 @@ public final class UiStateCodec {
         } else {
             buf.writeBoolean(false);
         }
+
+        int[] slots = data.dataSlots();
+        if (slots == null) {
+            buf.writeVarInt(0);
+        } else {
+            buf.writeVarInt(slots.length);
+            for (int value : slots) {
+                buf.writeVarInt(value);
+            }
+        }
+
+        buf.writeVarInt(data.windowWidth());                  // readVarInt
+        buf.writeVarInt(data.windowHeight());                 // readVarInt
+
+        // ScreenExtras: one block, always written, so a version-4 reader never
+        // has to guess whether the tail is present.
+        ScreenExtras ex = data.extras() == null ? ScreenExtras.EMPTY : data.extras();
+        buf.writeVarInt(ex.entityId());                       // readVarInt
+        buf.writeVarInt(ex.columns());                        // readVarInt
+        buf.writeVarInt(ex.selectedTab());                    // readVarInt
+        buf.writeFloat(ex.scrollOffs());                      // readFloat
+        buf.writeUtf(ex.searchText());                        // readUtf
+        buf.writeVarInt(ex.currentPage());                    // readVarInt
+        buf.writeVarInt(ex.bookPages().size());               // readVarInt
+        for (String page : ex.bookPages()) {
+            buf.writeUtf(page == null ? "" : page);           // readUtf
+        }
+        buf.writeVarInt(ex.bookPage());                       // readVarInt
     }
 
     public static UiStateData decode(RegistryFriendlyByteBuf buf) {
@@ -138,8 +172,41 @@ public final class UiStateCodec {
 
         BlockPos blockPos = buf.readBoolean() ? buf.readBlockPos() : null;
 
+        int dataSlotCount = buf.readVarInt();
+        if (dataSlotCount < 0 || dataSlotCount > MAX_DATA_SLOTS) {
+            throw new IllegalStateException("replayui: implausible data slot count "
+                    + dataSlotCount);
+        }
+        int[] dataSlots = new int[dataSlotCount];
+        for (int i = 0; i < dataSlotCount; i++) {
+            dataSlots[i] = buf.readVarInt();
+        }
+
+        int windowWidth = buf.readVarInt();
+        int windowHeight = buf.readVarInt();
+
+        int entityId = buf.readVarInt();
+        int columns = buf.readVarInt();
+        int selectedTab = buf.readVarInt();
+        float scrollOffs = buf.readFloat();
+        String searchText = buf.readUtf();
+        int currentPage = buf.readVarInt();
+        int pageCount = buf.readVarInt();
+        if (pageCount < 0 || pageCount > MAX_BOOK_PAGES) {
+            throw new IllegalStateException("replayui: implausible book page count "
+                    + pageCount);
+        }
+        List<String> bookPages = new ArrayList<>(pageCount);
+        for (int i = 0; i < pageCount; i++) {
+            bookPages.add(buf.readUtf());
+        }
+        int bookPage = buf.readVarInt();
+        ScreenExtras extras = new ScreenExtras(entityId, columns, selectedTab,
+                scrollOffs, searchText, currentPage, bookPages, bookPage);
+
         return new UiStateData(ownerUuid, open, menuTypeId, title,
-                items, carried, containerId, mouseX, mouseY, blockPos);
+                items, carried, containerId, mouseX, mouseY, blockPos, dataSlots,
+                windowWidth, windowHeight, extras);
     }
 
     /** Encodes one tick's worth of samples: count followed by each sample. */

@@ -83,6 +83,60 @@ public final class ReplayUIConfig {
      */
     public static boolean showCursorIcon = true;
 
+    /**
+     * Draw rebuilt containers into Flashback's exported video frames as well.
+     *
+     * <p>Flashback clears every screen before it captures a frame, so without
+     * this a preview shows the container and the exported file does not. The
+     * screen is mounted only for the duration of one GameRenderer#render call
+     * and removed immediately afterwards, which keeps Flashback's export loop
+     * from stalling on a screen that is still open.
+     *
+     * <p>Independent of {@link #showContainerUi}: that one is about the live
+     * preview while flying the camera. Turning this off gives a clean export
+     * without changing what the editor sees. Flashback's own "No GUI" option
+     * still wins - it cancels the GUI half of render entirely.
+     */
+    public static boolean includeUiInExport = true;
+
+    /**
+     * Ease the recorded cursor between its once-per-tick samples.
+     *
+     * <p>Pure playback-side arithmetic; the recorded values are untouched.
+     * Off restores the old stepping behaviour and is the first thing to try if
+     * the held stack ever looks like it lags behind the pointer.
+     */
+    public static boolean smoothCursor = true;
+
+    /**
+     * Draw the tooltip of the item under the recorded cursor.
+     *
+     * <p>The tooltip is vanilla's own, produced by the rebuilt screen from the
+     * recorded mouse position. It can be noisy in an edited video, so it is a
+     * separate switch from the pointer and the slot highlight.
+     */
+    public static boolean showRecordedTooltips = true;
+
+    /**
+     * Animate items that moved between slots without passing through the
+     * cursor (shift-click, hotkey swaps).
+     *
+     * <p>Inferred from two consecutive full slot snapshots on the playback
+     * side, so it changes nothing about the recording format. Ambiguous moves
+     * are deliberately not animated.
+     */
+    public static boolean animateItemMoves = true;
+
+    /**
+     * Rebuild creative inventories, lectern books and horse inventories.
+     *
+     * <p>These three are not plain MenuType containers, so they are restored
+     * reflectively by class and field name. Turning this off is the clean way
+     * to isolate them if one of them misbehaves: every standard container keeps
+     * working exactly as before.
+     */
+    public static boolean showSpecialScreens = true;
+
     private ReplayUIConfig() {
     }
 }

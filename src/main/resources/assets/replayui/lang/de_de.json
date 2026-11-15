@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Container-UI-Wiedergabe umschalten",
+  "replayui.keybind.toggleui": "Container-UI ein-/ausblenden",
+  "replayui.keybind.detach": "Loslösen / Wieder anheften",
+  "replayui.toggle.on": "ReplayUI: an",
+  "replayui.toggle.off": "ReplayUI: aus",
+  "replayui.ui.on": "ReplayUI: Oberflächen sichtbar",
+  "replayui.ui.off": "ReplayUI: Oberflächen verborgen",
+  "replayui.detach": "ReplayUI: losgelöst, Kamera ist frei und Oberflächen bleiben geschlossen",
+  "replayui.reattach": "ReplayUI: wieder angeheftet, Container-Oberflächen erscheinen erneut"
+}

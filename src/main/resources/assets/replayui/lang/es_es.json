@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Alternar reproducción de interfaces de contenedor",
+  "replayui.keybind.toggleui": "Mostrar/ocultar interfaces de contenedor",
+  "replayui.keybind.detach": "Desvincular / Volver a vincular",
+  "replayui.toggle.on": "ReplayUI: activado",
+  "replayui.toggle.off": "ReplayUI: desactivado",
+  "replayui.ui.on": "ReplayUI: interfaces visibles",
+  "replayui.ui.off": "ReplayUI: interfaces ocultas",
+  "replayui.detach": "ReplayUI: desvinculado, la cámara es libre y las interfaces permanecen cerradas",
+  "replayui.reattach": "ReplayUI: vinculado de nuevo, las interfaces de contenedor volverán a aparecer"
+}

@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Przełącz odtwarzanie interfejsów pojemników",
+  "replayui.keybind.toggleui": "Pokaż/ukryj interfejsy pojemników",
+  "replayui.keybind.detach": "Odłącz / Przyłącz ponownie",
+  "replayui.toggle.on": "ReplayUI: włączone",
+  "replayui.toggle.off": "ReplayUI: wyłączone",
+  "replayui.ui.on": "ReplayUI: interfejsy widoczne",
+  "replayui.ui.off": "ReplayUI: interfejsy ukryte",
+  "replayui.detach": "ReplayUI: odłączono, kamera jest wolna, interfejsy pozostają zamknięte",
+  "replayui.reattach": "ReplayUI: przyłączono ponownie, interfejsy pojemników znów się pojawią"
+}

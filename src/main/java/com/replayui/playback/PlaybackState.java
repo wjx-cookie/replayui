@@ -3,6 +3,7 @@ package com.replayui.playback;
 import com.moulberry.flashback.Flashback;
 import com.replayui.codec.UiStateData;
 import com.replayui.log.DebugLog;
+import com.replayui.render.ItemFlightAnimator;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 
@@ -81,7 +82,8 @@ public final class PlaybackState {
                 continue;
             }
             UUID bucket = key(sample.ownerUuid());
-            latestByOwner.put(bucket, sample);
+            UiStateData previous = latestByOwner.put(bucket, sample);
+            ItemFlightAnimator.onSamples(previous, sample);
             updatedAt.put(bucket, stamp);
             last = sample;
         }
@@ -234,6 +236,7 @@ public final class PlaybackState {
         selectionComputed = false;
         selectionAtStamp = -1L;
         selectionCamera = null;
+        ItemFlightAnimator.clear();
         // Do not reset announced: it exists to confirm the link works at all,
         // and re-printing it for every replay would be noise.
     }

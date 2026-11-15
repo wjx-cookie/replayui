@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "切換容器介面重播",
+  "replayui.keybind.toggleui": "顯示/隱藏容器介面",
+  "replayui.keybind.detach": "脫離附身 / 恢復",
+  "replayui.toggle.on": "ReplayUI：已開啟",
+  "replayui.toggle.off": "ReplayUI：已關閉",
+  "replayui.ui.on": "ReplayUI：介面已顯示",
+  "replayui.ui.off": "ReplayUI：介面已隱藏",
+  "replayui.detach": "ReplayUI：已脫離附身，相機恢復自由，介面不再自動出現",
+  "replayui.reattach": "ReplayUI：已恢復，容器介面會重新出現"
+}

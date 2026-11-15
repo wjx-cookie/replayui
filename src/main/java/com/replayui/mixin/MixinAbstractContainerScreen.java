@@ -1,9 +1,11 @@
 package com.replayui.mixin;
 
+import com.replayui.ReplayUIConfig;
 import com.replayui.ReplayUIIds;
 import com.replayui.ReplayUIKeybinds;
 import com.replayui.playback.PlaybackTicker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -105,6 +107,26 @@ public class MixinAbstractContainerScreen {
         }
 
         cir.setReturnValue(true);
+    }
+
+    /**
+     * Hides the tooltip of the item under the recorded cursor.
+     *
+     * <p>{@code AbstractContainerScreen#renderTooltip(GuiGraphics,int,int)} is
+     * the protected, screen-level method on 1.21.1 that every container screen
+     * goes through, so one injection covers item tooltips without touching any
+     * other GUI in the game. The slot highlight and the held stack are drawn
+     * elsewhere and stay visible - this switch only affects the text panel.
+     *
+     * <p>{@code require = 0}: a version where the method is named differently
+     * simply keeps showing tooltips.
+     */
+    @Inject(method = "renderTooltip", at = @At("HEAD"), cancellable = true, require = 0)
+    private void replayui$hideRecordedTooltip(GuiGraphics guiGraphics, int x, int y,
+                                              CallbackInfo ci) {
+        if (!ReplayUIConfig.showRecordedTooltips && replayui$isOurs()) {
+            ci.cancel();
+        }
     }
 
     /**

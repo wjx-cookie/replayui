@@ -49,6 +49,12 @@ public final class ContainerScreenBuilder {
             return null;
         }
 
+        // Creative inventory and lectern books have no MenuType factory; they
+        // take their own reflective route before any registry lookup.
+        if (data.isSpecialScreen()) {
+            return SpecialScreens.build(client, data);
+        }
+
         // Reached when a container screen was open but no MenuType could be
         // read from it - the creative inventory is the usual case, and it is
         // out of scope rather than broken.
@@ -150,7 +156,7 @@ public final class ContainerScreenBuilder {
             return null;
         }
 
-        if (!fillMenu(menu, data.items(), data.carried())) {
+        if (!fillMenu(menu, data.items(), data.carried(), data.dataSlots())) {
             client.setScreen(before);
             return null;
         }
@@ -158,6 +164,10 @@ public final class ContainerScreenBuilder {
         // create() already did this, but restate it: if a modded screen replaced
         // it during construction the replay would misbehave on close.
         player.containerMenu = menu;
+
+        // Horse/llama screens travelled the normal path above; all they still
+        // need is the entity the menu belongs to.
+        SpecialScreens.attachHorse(client, screen, data);
 
         return screen;
     }
@@ -190,7 +200,7 @@ public final class ContainerScreenBuilder {
             return null;
         }
 
-        if (!fillMenu(inventoryMenu, data.items(), data.carried())) {
+        if (!fillMenu(inventoryMenu, data.items(), data.carried(), data.dataSlots())) {
             return null;
         }
 
@@ -215,6 +225,9 @@ public final class ContainerScreenBuilder {
      * @return true if the contents were applied
      */
     public static boolean refresh(Screen screen, UiStateData data) {
+        if (data.isSpecialScreen()) {
+            return SpecialScreens.refresh(screen, data);
+        }
         if (!(screen instanceof AbstractContainerScreen<?> containerScreen)) {
             return false;
         }
@@ -232,7 +245,7 @@ public final class ContainerScreenBuilder {
             return false;
         }
 
-        return fillMenu(menu, data.items(), data.carried());
+        return fillMenu(menu, data.items(), data.carried(), data.dataSlots());
     }
 
     /**
@@ -249,7 +262,8 @@ public final class ContainerScreenBuilder {
      * half is the viewer's real Inventory. InventorySnapshot in PlaybackTicker
      * is what makes that safe to do.
      */
-    private static boolean fillMenu(AbstractContainerMenu menu, List<ItemStack> items, ItemStack carried) {
+    static boolean fillMenu(AbstractContainerMenu menu, List<ItemStack> items,
+                                    ItemStack carried, int[] dataSlots) {
         // Try the vanilla entry point first, then CHECK that it actually wrote.
         //
         // A menu we built ourselves has no ContainerSynchronizer - that is only
@@ -301,6 +315,7 @@ public final class ContainerScreenBuilder {
         }
 
         if (viaVanilla) {
+            applyDataSlots(menu, dataSlots);
             return true;
         }
 
@@ -323,10 +338,33 @@ public final class ContainerScreenBuilder {
                 menu.resumeRemoteUpdates();
             }
             menu.setCarried(held.copy());
+            applyDataSlots(menu, dataSlots);
             return true;
         } catch (Throwable t2) {
             DebugLog.warn("failed to fill menu slots", t2);
             return false;
+        }
+    }
+
+    /**
+     * Puts the recorded progress integers back onto the rebuilt menu.
+     *
+     * <p>{@code setData} writes into the menu's own {@code dataSlots} list,
+     * which is exactly what the vanilla screen renders its flame, arrow and
+     * bubbles from. A menu whose client constructor did not register that many
+     * slots throws on the first out-of-range index; that is caught and the
+     * remaining values are dropped rather than breaking the whole screen.
+     */
+    private static void applyDataSlots(AbstractContainerMenu menu, int[] values) {
+        if (values == null || values.length == 0) {
+            return;
+        }
+        for (int i = 0; i < values.length; i++) {
+            try {
+                menu.setData(i, values[i]);
+            } catch (Throwable t) {
+                break;
+            }
         }
     }
 

@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "コンテナUIの再生を切り替え",
+  "replayui.keybind.toggleui": "コンテナUIの表示/非表示",
+  "replayui.keybind.detach": "憑依解除 / 再開",
+  "replayui.toggle.on": "ReplayUI: オン",
+  "replayui.toggle.off": "ReplayUI: オフ",
+  "replayui.ui.on": "ReplayUI: 画面を表示",
+  "replayui.ui.off": "ReplayUI: 画面を非表示",
+  "replayui.detach": "ReplayUI: 憑依を解除しました。カメラは自由になり、画面は自動表示されません",
+  "replayui.reattach": "ReplayUI: 再開しました。コンテナ画面が再び表示されます"
+}

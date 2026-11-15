@@ -111,7 +111,9 @@ public final class UiSampler {
         if (!ReplayUIConfig.captureMouse && (data.mouseX() != 0 || data.mouseY() != 0)) {
             data = new UiStateData(data.ownerUuid(), data.open(), data.menuTypeId(),
                     data.title(), data.items(), data.carried(),
-                    data.containerId(), 0.0, 0.0, data.blockPos());
+                    data.containerId(), 0.0, 0.0, data.blockPos(),
+                    data.dataSlots(), data.windowWidth(), data.windowHeight(),
+                    data.extras());
         }
 
         // State model: skip the write when nothing changed. Keeps files small

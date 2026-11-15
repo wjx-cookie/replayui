@@ -36,8 +36,16 @@ public final class ReplayUIIds {
      * <p>2: added the cursor-held stack ({@code UiStateData#carried}). Replays
      * written with 1 are rejected by the version check rather than
      * mis-decoded - they must be re-recorded.
+     *
+     * <p>3: added {@code dataSlots}, the integer values behind furnace flames,
+     * brewing bubbles, enchantment costs and similar indicators. Replays made
+     * with 2 are rejected by the version check and must be re-recorded.
+     *
+     * <p>4: added {@code ScreenExtras} - the state behind creative tabs and
+     * scrolling, horse/llama entity references and lectern book pages. Replays
+     * made with 3 or earlier are rejected and must be re-recorded.
      */
-    public static final int FORMAT_VERSION = 2;
+    public static final int FORMAT_VERSION = 4;
 
     private ReplayUIIds() {
     }

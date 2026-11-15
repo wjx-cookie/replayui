@@ -1,0 +1,12 @@
+{
+  "replayui.keybind.category": "ReplayUI",
+  "replayui.keybind.toggle": "Växla uppspelning av behållargränssnitt",
+  "replayui.keybind.toggleui": "Visa/dölj behållargränssnitt",
+  "replayui.keybind.detach": "Koppla från / Återanslut",
+  "replayui.toggle.on": "ReplayUI: på",
+  "replayui.toggle.off": "ReplayUI: av",
+  "replayui.ui.on": "ReplayUI: gränssnitt visas",
+  "replayui.ui.off": "ReplayUI: gränssnitt dolda",
+  "replayui.detach": "ReplayUI: frånkopplad, kameran är fri och gränssnitten förblir stängda",
+  "replayui.reattach": "ReplayUI: återansluten, behållargränssnitten visas igen"
+}
