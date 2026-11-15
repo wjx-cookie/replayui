@@ -24,15 +24,17 @@ import net.minecraft.client.gui.GuiGraphics;
  *       mapped onto a 3D panel in the world takes the pointer with it, because
  *       the icon is just another draw call in the same batch.</li>
  *   <li>Nothing resets the pose or pushes a matrix of its own, which is what
- *       would break that inheritance.</li>
+ *       would break that inheritance. For the same reason the PNG is decoded
+ *       into pixels and drawn with {@code fill} rather than bound as a texture:
+ *       a blit would flush the batch.</li>
  *   <li>It is injected at the tail of {@code render}, after the screen has
  *       drawn its own hover, highlight and tooltip, so it lands on top of them
  *       the way a real pointer does - not buried under a tooltip.</li>
  * </ul>
  *
- * <p>The icon is a plain arrow assembled from rectangles, which keeps it free
- * of any texture: no resource to load, nothing that can be missing after a
- * resource reload, and nothing that has to be shipped alongside the mod.
+ * <p>The picture is a replaceable PNG - see {@link CursorTexture} for where to
+ * put one. If no PNG can be loaded at all, the built-in arrow bitmap below is
+ * used, so the pointer never silently disappears.
  *
  * <p>All of the decision-making lives in {@link #drawIfNeeded} rather than in
  * the mixin that calls it, so it can be exercised without a mixin engine.
@@ -42,15 +44,39 @@ public final class RecordedCursorIcon {
     /** White fill with a black outline, the usual pointer silhouette. */
     private static final int FILL = 0xFFFFFFFF;
     private static final int OUTLINE = 0xFF000000;
+    private static final int TRANSPARENT = 0;
 
     /**
-     * Width of each row of the arrow, top to bottom.
-     *
-     * <p>Widens from the tip down to the bar across the bottom of the head,
-     * then narrows to the tail. Fifteen rows by ten pixels, close to the size
-     * of the pointer the system draws.
+     * Fallback arrow, 12 columns by 19 rows, tip at {@code (0, 0)}.
+     * '#' is filled; '.' is transparent. The diagonal shoulder and the
+     * constant-width tail are what make it read as a pointer rather than a
+     * triangle. This bitmap is only the fallback: the shipped PNG is a
+     * separately supplied arrow (background removed, downscaled to 12x19),
+     * so the two no longer match pixel for pixel.
      */
-    private static final int[] ROWS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 6, 4, 2, 2, 2};
+    private static final String[] SHAPE = {
+            "#...........", //  0  tip
+            "##..........", //  1
+            "###.........", //  2
+            "####........", //  3
+            "#####.......", //  4
+            "######......", //  5
+            "#######.....", //  6
+            "########....", //  7
+            "#########...", //  8
+            "##########..", //  9
+            "###########.", // 10
+            "############", // 11  widest row
+            ".#########..", // 12  diagonal shoulder
+            "..########..", // 13
+            ".....#####..", // 14
+            "......####..", // 15  tail
+            "......####..", // 16
+            "......####..", // 17
+            "......####..", // 18
+    };
+
+    private static final int SHAPE_WIDTH = SHAPE[0].length();
 
     private RecordedCursorIcon() {
     }
@@ -81,44 +107,145 @@ public final class RecordedCursorIcon {
         draw(guiGraphics, VanillaCursor.recordedX(), VanillaCursor.recordedY());
     }
 
-    /**
-     * Draws the arrow with its tip at {@code (x, y)}.
-     *
-     * <p>Two passes: the outline is drawn first, one pixel larger on every
-     * side, then the fill on top of it. Doing it in that order is what leaves
-     * an even border - drawing row by row instead would let the next row's
-     * outline eat the previous row's fill.
-     */
+    /** Draws the pointer with its hotspot at {@code (x, y)}. */
     public static void draw(GuiGraphics guiGraphics, int x, int y) {
         if (guiGraphics == null) {
             return;
         }
-        for (int row = 0; row < ROWS.length; row++) {
-            int width = ROWS[row];
-            guiGraphics.fill(x - 1, y + row - 1, x - 1 + width + 2, y + row + 1, OUTLINE);
+        CursorTexture.Sprite sprite = CursorTexture.get();
+        if (sprite == null) {
+            drawFallback(guiGraphics, x, y);
+            return;
         }
-        for (int row = 0; row < ROWS.length; row++) {
-            int width = ROWS[row];
-            guiGraphics.fill(x, y + row, x + width, y + row + 1, FILL);
+        drawSprite(guiGraphics, sprite, x - sprite.offsetX, y - sprite.offsetY);
+    }
+
+    /**
+     * Two passes: black outline first, then every other colour. Consecutive
+     * pixels of the same colour are collapsed into one horizontal run, so a
+     * custom multicolour PNG still costs only a handful of {@code fill} calls
+     * per row. All drawing goes through the screen's own {@code GuiGraphics}.
+     */
+    private static void drawSprite(GuiGraphics g, CursorTexture.Sprite s, int baseX, int baseY) {
+        drawPass(g, s, baseX, baseY, true);
+        drawPass(g, s, baseX, baseY, false);
+    }
+
+    private static void drawPass(GuiGraphics g, CursorTexture.Sprite s,
+                                 int baseX, int baseY, boolean outlinePass) {
+        for (int row = 0; row < s.height; row++) {
+            int col = 0;
+            while (col < s.width) {
+                int color = s.argb[row * s.width + col];
+                if (!matches(color, outlinePass)) {
+                    col++;
+                    continue;
+                }
+                int start = col;
+                while (col < s.width
+                        && s.argb[row * s.width + col] == color
+                        && matches(color, outlinePass)) {
+                    col++;
+                }
+                g.fill(baseX + start, baseY + row, baseX + col, baseY + row + 1, color);
+            }
         }
     }
 
-    /** How many rectangles the arrow is made of, both passes included. */
+    private static boolean matches(int color, boolean outlinePass) {
+        if (color == TRANSPARENT) {
+            return false;
+        }
+        return outlinePass ? color == OUTLINE : color != OUTLINE;
+    }
+
+    /** The original bitmap renderer, used only when no PNG could be loaded. */
+    static void drawFallback(GuiGraphics g, int x, int y) {
+        for (int row = 0; row < SHAPE.length; row++) {
+            String line = SHAPE[row];
+            int col = 0;
+            while (col < line.length()) {
+                if (line.charAt(col) != '#') {
+                    col++;
+                    continue;
+                }
+                int start = col;
+                while (col < line.length() && line.charAt(col) == '#') {
+                    col++;
+                }
+                g.fill(x + start - 1, y + row - 1,
+                        x + col + 1, y + row + 2, OUTLINE);
+            }
+        }
+        for (int row = 0; row < SHAPE.length; row++) {
+            String line = SHAPE[row];
+            int col = 0;
+            while (col < line.length()) {
+                if (line.charAt(col) != '#') {
+                    col++;
+                    continue;
+                }
+                int start = col;
+                while (col < line.length() && line.charAt(col) == '#') {
+                    col++;
+                }
+                g.fill(x + start, y + row, x + col, y + row + 1, FILL);
+            }
+        }
+    }
+
+    /** Number of {@code fill} calls the current picture needs. */
     public static int drawCallCount() {
-        return ROWS.length * 2;
-    }
-
-    /** Height of the arrow in pixels, outline included. */
-    public static int height() {
-        return ROWS.length + 2;
-    }
-
-    /** Width of the arrow in pixels, outline included. */
-    public static int width() {
-        int widest = 0;
-        for (int width : ROWS) {
-            widest = Math.max(widest, width);
+        CursorTexture.Sprite s = CursorTexture.get();
+        if (s == null) {
+            int runs = 0;
+            for (String line : SHAPE) {
+                int col = 0;
+                while (col < line.length()) {
+                    if (line.charAt(col) != '#') {
+                        col++;
+                        continue;
+                    }
+                    runs++;
+                    while (col < line.length() && line.charAt(col) == '#') {
+                        col++;
+                    }
+                }
+            }
+            return runs * 2;
         }
-        return widest + 2;
+        int calls = 0;
+        for (int row = 0; row < s.height; row++) {
+            int col = 0;
+            while (col < s.width) {
+                int color = s.argb[row * s.width + col];
+                if (color == TRANSPARENT) {
+                    col++;
+                    continue;
+                }
+                calls++;
+                while (col < s.width && s.argb[row * s.width + col] == color) {
+                    col++;
+                }
+            }
+        }
+        return calls;
+    }
+
+    /** Height of the drawn pointer in pixels, outline included. */
+    public static int height() {
+        CursorTexture.Sprite s = CursorTexture.get();
+        return s == null ? SHAPE.length + 2 : s.height;
+    }
+
+    /** Width of the drawn pointer in pixels, outline included. */
+    public static int width() {
+        CursorTexture.Sprite s = CursorTexture.get();
+        return s == null ? SHAPE_WIDTH + 2 : s.width;
+    }
+
+    /** The fallback bitmap, exposed so tests can compare the shipped PNG to it. */
+    public static String[] fallbackShape() {
+        return SHAPE.clone();
     }
 }

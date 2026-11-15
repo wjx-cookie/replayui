@@ -1,4 +1,4 @@
-\## 0.1.3
+\## 0.1.4
 
 
 
@@ -8,19 +8,15 @@
 
 修复：
 
-\- 修复 UI 不进入最终导出视频的问题
+\- 修复游戏界面内的虚拟光标样式不正确的问题
 
-\- 修复光标不显示的问题
+\- 修复系统光标可以干扰显示的问题
 
 
 
 已知问题：
 
-\- 游戏界面内的虚拟光标样式不正确，位移路径不精确
-
-\- 物品不能正确挂在光标上
-
-\- 系统光标可以进入正在显示的 UI 并干扰显示
+\- 虚拟光标过大，位移路径不精确
 
 
 
@@ -36,19 +32,15 @@
 
 Fixes:
 
-\- Fixed UI not being included in the final exported video
+\- Fixed the in-game virtual cursor using an incorrect style
 
-\- Fixed the cursor not being rendered
+\- Fixed the system cursor interfering with UI rendering
 
 
 
 Known issues:
 
-\- The in-game virtual cursor uses an incorrect style and its movement path is imprecise
-
-\- Items do not attach to the cursor correctly
-
-\- The system cursor can enter the displayed UI and interfere with rendering
+\- The in-game virtual cursor is too large and its movement path is imprecise
 
 
 

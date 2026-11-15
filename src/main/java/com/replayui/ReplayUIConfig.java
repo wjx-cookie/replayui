@@ -84,6 +84,34 @@ public final class ReplayUIConfig {
     public static boolean showCursorIcon = true;
 
     /**
+     * Resource-pack location of the recorded pointer's PNG.
+     *
+     * <p>Default {@code replayui:textures/gui/recorded_cursor.png}. Players do
+     * not need to edit this: putting a PNG at {@code config/replayui/cursor.png}
+     * or overriding that path in a resource pack is enough. This is the
+     * fallback used when no {@code config/replayui/cursor.properties} exists.
+     */
+    public static String cursorTexture = "replayui:textures/gui/recorded_cursor.png";
+
+    /**
+     * Paint a one-pixel black border around the PNG's visible pixels.
+     *
+     * <p>Off by default. The shipped default cursor already carries its own
+     * outline inside the PNG, and a player-supplied picture must be drawn
+     * exactly as authored - the mod must never add a border to somebody
+     * else's cursor behind their back. Set {@code outline=true} in
+     * {@code config/replayui/cursor.properties} only when you explicitly want
+     * one added to your own picture.
+     */
+    public static boolean cursorOutline = false;
+
+    /** Hotspot offset: the PNG's top-left corner sits at (cursorX + X, cursorY + Y). */
+    public static int cursorHotspotX = 0;
+
+    /** Hotspot offset: the PNG's top-left corner sits at (cursorX + X, cursorY + Y). */
+    public static int cursorHotspotY = 0;
+
+    /**
      * Draw rebuilt containers into Flashback's exported video frames as well.
      *
      * <p>Flashback clears every screen before it captures a frame, so without
