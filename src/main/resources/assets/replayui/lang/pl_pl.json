@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: interfejsy widoczne",
   "replayui.ui.off": "ReplayUI: interfejsy ukryte",
   "replayui.detach": "ReplayUI: odłączono, kamera jest wolna, interfejsy pozostają zamknięte",
-  "replayui.reattach": "ReplayUI: przyłączono ponownie, interfejsy pojemników znów się pojawią"
+  "replayui.reattach": "ReplayUI: przyłączono ponownie, interfejsy pojemników znów się pojawią",
+  "replayui.config.title": "Ustawienia ReplayUI",
+  "replayui.config.done": "Gotowe",
+  "replayui.config.cancel": "Anuluj",
+  "replayui.config.on": "TAK",
+  "replayui.config.off": "NIE",
+  "replayui.config.source": "Źródło kursora: %s",
+  "replayui.config.override": "Własny obrazek wyłącza styl systemowy",
+  "replayui.config.hint": "Zastosuj po «Gotowe»",
+  "replayui.config.showSpecialScreens": "Ekrany specjalne",
+  "replayui.config.showRecordedTooltips": "Podpowiedzi przedmiotów",
+  "replayui.config.followSystemCursorStyle": "Styl kursora systemowego",
+  "replayui.config.followSystemCursorSize": "Rozmiar kursora systemowego",
+  "replayui.config.cursorScale": "Skala kursora",
+  "replayui.config.cursorMaxHeight": "Maks. wysokość kursora",
+  "replayui.config.preview": "Podgląd kursora",
+  "replayui.config.previewScaled": "wyświetlany w %s% rzeczywistego rozmiaru",
+  "replayui.config.systemUnavailable": "Kursor systemowy niedostępny - pokazano wbudowaną strzałkę"
 }

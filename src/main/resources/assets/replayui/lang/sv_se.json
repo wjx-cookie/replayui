@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: gränssnitt visas",
   "replayui.ui.off": "ReplayUI: gränssnitt dolda",
   "replayui.detach": "ReplayUI: frånkopplad, kameran är fri och gränssnitten förblir stängda",
-  "replayui.reattach": "ReplayUI: återansluten, behållargränssnitten visas igen"
+  "replayui.reattach": "ReplayUI: återansluten, behållargränssnitten visas igen",
+  "replayui.config.title": "ReplayUI-inställningar",
+  "replayui.config.done": "Klar",
+  "replayui.config.cancel": "Avbryt",
+  "replayui.config.on": "PÅ",
+  "replayui.config.off": "AV",
+  "replayui.config.source": "Pekarkälla: %s",
+  "replayui.config.override": "Egen bild åsidosätter systemstil",
+  "replayui.config.hint": "Verkställs med «Klar»",
+  "replayui.config.showSpecialScreens": "Specialsidor",
+  "replayui.config.showRecordedTooltips": "Föremålstips",
+  "replayui.config.followSystemCursorStyle": "Följ systemets pekarstil",
+  "replayui.config.followSystemCursorSize": "Följ systemets pekarstorlek",
+  "replayui.config.cursorScale": "Pekarskala",
+  "replayui.config.cursorMaxHeight": "Max pekarhöjd",
+  "replayui.config.preview": "Förhandsvisning av markören",
+  "replayui.config.previewScaled": "visas i %s% av verklig storlek",
+  "replayui.config.systemUnavailable": "Systempekaren är otillgänglig - den inbyggda pilen visas"
 }

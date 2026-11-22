@@ -1,9 +1,12 @@
 package com.replayui.util;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -14,10 +17,18 @@ import java.util.Map;
  * <p>This is why supporting the three special screens does not add a single
  * mixin. A wrong name means one screen is skipped with a verbose log line,
  * not a startup crash and not a compile-time dependency on a guessed API.
+ *
+ * <p>{@link #set} also performs a small, explicit set of conversions (enum by
+ * ordinal/name, int to long/float/double, Object[] to a typed array). Several
+ * recorded fields are enums or longs stored as integer slots; without this the
+ * write would be silently skipped by the old "exact type only" check. Every
+ * conversion is type-directed - nothing is written into a field that cannot
+ * hold the resulting value.
  */
 public final class ScreenReflect {
 
     private static final Map<String, Class<?>> CACHE = new HashMap<String, Class<?>>();
+    private static final Object NO_VALUE = new Object();
 
     private ScreenReflect() {
     }
@@ -73,16 +84,17 @@ public final class ScreenReflect {
         return null;
     }
 
-    /** Write the first field whose type can actually hold value. */
+    /** Write the first field whose type can hold value (after coercion). */
     public static boolean set(Object target, Object value, String... names) {
         if (target == null) { return false; }
         for (String name : names) {
             Field f = field(target.getClass(), name);
             if (f == null) { continue; }
-            if (!compatible(f.getType(), value)) { continue; }
+            Object v = coerce(f.getType(), value);
+            if (v == NO_VALUE) { continue; }
             try {
                 f.setAccessible(true);
-                f.set(target, value);
+                f.set(target, v);
                 return true;
             } catch (Throwable ignored) {
             }
@@ -95,10 +107,11 @@ public final class ScreenReflect {
         for (String name : names) {
             Field f = field(cls, name);
             if (f == null) { continue; }
-            if (!compatible(f.getType(), value)) { continue; }
+            Object v = coerce(f.getType(), value);
+            if (v == NO_VALUE) { continue; }
             try {
                 f.setAccessible(true);
-                f.set(null, value);
+                f.set(null, v);
                 return true;
             } catch (Throwable ignored) {
             }
@@ -143,6 +156,38 @@ public final class ScreenReflect {
     }
 
     /**
+     * One-argument call matched by NAME and assignability, not by exact
+     * signature. Needed for methods whose parameter is a mapped interface
+     * (Level, BlockPos, ResourceLocation) that we cannot name at compile time.
+     */
+    public static Object callAny(Object target, Object arg, String... names) {
+        if (target == null || arg == null) { return null; }
+        for (Class<?> k = target.getClass(); k != null; k = k.getSuperclass()) {
+            Method[] all;
+            try {
+                all = k.getDeclaredMethods();
+            } catch (Throwable ignored) {
+                continue;
+            }
+            for (Method m : all) {
+                if (m.getParameterCount() != 1) { continue; }
+                boolean named = false;
+                for (String n : names) {
+                    if (m.getName().equals(n)) { named = true; break; }
+                }
+                if (!named) { continue; }
+                if (!boxed(m.getParameterTypes()[0]).isInstance(arg)) { continue; }
+                try {
+                    m.setAccessible(true);
+                    return m.invoke(target, arg);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Try every declared constructor, filling parameters from preferred values
      * by type. Primitives get a default when nothing suitable was supplied.
      * Returns null if no constructor can be satisfied.
@@ -174,8 +219,6 @@ public final class ScreenReflect {
         }
         return null;
     }
-
-    private static final Object NO_VALUE = new Object();
 
     private static Object pick(Class<?> type, Object[] preferred) {
         Class<?> boxed = boxed(type);
@@ -211,6 +254,92 @@ public final class ScreenReflect {
         Class<?> boxed = boxed(type);
         if (value == null) { return !type.isPrimitive(); }
         return boxed.isInstance(value);
+    }
+
+    /**
+     * Convert a recorded value into something the field can actually hold.
+     * Only well-defined, type-directed conversions happen here; everything else
+     * is left untouched (NO_VALUE) so the caller skips the field.
+     */
+    private static Object coerce(Class<?> type, Object value) {
+        if (compatible(type, value)) { return value; }
+        if (value == null) { return NO_VALUE; }
+
+        if (type.isEnum()) {
+            Object[] all = type.getEnumConstants();
+            if (all == null) { return NO_VALUE; }
+            if (value instanceof Number) {
+                int i = ((Number) value).intValue();
+                if (i >= 0 && i < all.length) { return all[i]; }
+            }
+            if (value instanceof CharSequence) {
+                String s = value.toString();
+                for (Object c : all) {
+                    if (((Enum<?>) c).name().equalsIgnoreCase(s)) { return c; }
+                }
+            }
+            return NO_VALUE;
+        }
+        if ((type == long.class || type == Long.class) && value instanceof Number) {
+            return Long.valueOf(((Number) value).longValue());
+        }
+        if ((type == int.class || type == Integer.class) && value instanceof Number
+                && !(value instanceof Float) && !(value instanceof Double)) {
+            return Integer.valueOf(((Number) value).intValue());
+        }
+        if ((type == float.class || type == Float.class) && value instanceof Number) {
+            return Float.valueOf(((Number) value).floatValue());
+        }
+        if ((type == double.class || type == Double.class) && value instanceof Number) {
+            return Double.valueOf(((Number) value).doubleValue());
+        }
+        if (type == boolean.class || type == Boolean.class) {
+            if (value instanceof Number) {
+                return Boolean.valueOf(((Number) value).intValue() != 0);
+            }
+        }
+        if (type.isArray()) {
+            return coerceArray(type.getComponentType(), value);
+        }
+        return NO_VALUE;
+    }
+
+    /** Object[] / Iterable -> a typed array, converting each element. */
+    private static Object coerceArray(Class<?> comp, Object value) {
+        List<Object> src = new ArrayList<Object>();
+        if (value instanceof Object[]) {
+            for (Object o : (Object[]) value) { src.add(o); }
+        } else if (value instanceof Iterable) {
+            for (Object o : (Iterable<?>) value) { src.add(o); }
+        } else {
+            return NO_VALUE;
+        }
+        Object out = Array.newInstance(comp, src.size());
+        for (int i = 0; i < src.size(); i++) {
+            Object e = src.get(i);
+            Object c = coerce(comp, e);
+            if (c == NO_VALUE) {
+                if (comp == String.class) {
+                    c = stringOf(e);
+                } else {
+                    return NO_VALUE;
+                }
+            }
+            try {
+                Array.set(out, i, c);
+            } catch (Throwable ignored) {
+                return NO_VALUE;
+            }
+        }
+        return out;
+    }
+
+    /** Best effort text for a Component-like object, without a compile-time dep. */
+    private static String stringOf(Object o) {
+        if (o == null) { return ""; }
+        if (o instanceof CharSequence) { return o.toString(); }
+        Object s = call(o, "getString", "getText", "getStringValue", "getContents");
+        return s == null ? String.valueOf(o) : String.valueOf(s);
     }
 
     private static Field field(Class<?> cls, String name) {

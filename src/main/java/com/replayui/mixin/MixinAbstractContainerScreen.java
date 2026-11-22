@@ -4,6 +4,8 @@ import com.replayui.ReplayUIConfig;
 import com.replayui.ReplayUIIds;
 import com.replayui.ReplayUIKeybinds;
 import com.replayui.playback.PlaybackTicker;
+import com.replayui.playback.RecordedXpLevel;
+import com.replayui.record.UiSampler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -35,12 +37,46 @@ public class MixinAbstractContainerScreen {
     private static final int GLFW_KEY_F1 = 290;
     private static final int GLFW_KEY_F25 = 314;
 
+    /**
+     * EnchantmentScreen reads the viewer's experience level while drawing its
+     * three level buttons. Borrow the recorded level for exactly this render
+     * call so the greyed-out options match the recording, then hand it back.
+     *
+     * <p>HEAD/TAIL of {@code render} (the same method the cursor mixin already
+     * hooks, and the one proven to fire in a real export frame), so this adds
+     * no new target signature. Both are {@code require = 0}; a miss simply
+     * leaves the old behaviour. The client tick restores as a safety net if a
+     * screen throws before TAIL.
+     */
+    @Inject(method = "render", at = @At("HEAD"), require = 0)
+    private void replayui$borrowRecordedXp(GuiGraphics guiGraphics, int mouseX, int mouseY,
+                                            float partialTick, CallbackInfo ci) {
+        // isOurScreen() also recognises the screen Flashback mounts only for
+        // the duration of an exported frame; the id-based check below covers
+        // modded containers. Both are needed so the exported video greys out
+        // the same buttons the live preview does.
+        AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
+        RecordedXpLevel.borrow(self,
+                replayui$isOurs() || PlaybackTicker.isOurScreen(self));
+    }
+
+    @Inject(method = "render", at = @At("TAIL"), require = 0)
+    private void replayui$restoreRecordedXp(GuiGraphics guiGraphics, int mouseX, int mouseY,
+                                             float partialTick, CallbackInfo ci) {
+        RecordedXpLevel.restore();
+    }
+
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true, require = 0)
     private void replayui$blockMouseClicked(double mouseX, double mouseY, int button,
                                             CallbackInfoReturnable<Boolean> cir) {
         if (replayui$isOurs()) {
             cir.setReturnValue(true);
+            return;
         }
+        // Not a rebuilt screen: this is the recording side, and the click is
+        // about to move an item. Capture one sample now, at the exact position
+        // of the press, before the next client tick can overwrite it.
+        UiSampler.recordClickEvent(Minecraft.getInstance(), button);
     }
 
     @Inject(method = "mouseReleased", at = @At("HEAD"), cancellable = true, require = 0)
@@ -107,6 +143,21 @@ public class MixinAbstractContainerScreen {
         }
 
         cir.setReturnValue(true);
+    }
+
+    /**
+     * Character input reaches a focused EditBox through charTyped, which is a
+     * separate callback from keyPressed and was not covered by the read-only
+     * hooks. Without this a viewer could type into a rebuilt anvil rename box,
+     * creative search box, book page, sign line or command field and change
+     * what the screen displays. Recording-side screens are left alone.
+     */
+    @Inject(method = "charTyped", at = @At("HEAD"), cancellable = true, require = 0)
+    private void replayui$blockCharTyped(char codePoint, int modifiers,
+                                         CallbackInfoReturnable<Boolean> cir) {
+        if (replayui$isOurs()) {
+            cir.setReturnValue(true);
+        }
     }
 
     /**

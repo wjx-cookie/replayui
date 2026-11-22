@@ -8,6 +8,7 @@ import com.replayui.util.ScreenReflect;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,20 +36,52 @@ public final class SpecialScreens {
             "net.minecraft.client.gui.screens.inventory.BookViewScreen$BookAccess"
     };
 
+    /** The creative tab is static; leave the viewer's own choice alone. */
+    private static Class<?> hijackedClass;
+    private static Object originalTab;
+    private static boolean tabHijacked;
+
     private SpecialScreens() {
+    }
+
+    /**
+     * Put the viewer's own creative tab back. Called from
+     * {@code PlaybackTicker.closeQuietly} on every exit path, and is a no-op
+     * when nothing was borrowed, so the per-tick call costs nothing.
+     */
+    public static void release() {
+        if (!tabHijacked) { return; }
+        tabHijacked = false;
+        try {
+            if (hijackedClass != null) {
+                ScreenReflect.setStatic(hijackedClass, originalTab, "selectedTab");
+            }
+        } catch (Throwable ignored) {
+            // A mapping change must never leak into the ticker.
+        }
+        hijackedClass = null;
+        originalTab = null;
+        ExtendedSupport.release();
+        DebugLog.verbose("creative tab restored to the viewer's own selection");
     }
 
     public static Screen build(Minecraft client, UiStateData data) {
         if (!ReplayUIConfig.showSpecialScreens) {
             return null;
         }
-        if (data.menuTypeId() == UiStateData.CREATIVE_INVENTORY) {
-            return buildCreative(client, data.extras());
+        Screen result = ExtendedSupport.buildNonContainer(client, data);
+        if (result == null && data.menuTypeId() == UiStateData.CREATIVE_INVENTORY) {
+            result = buildCreative(client, data.extras());
         }
-        if (data.menuTypeId() == UiStateData.LECTERN_SCREEN) {
-            return buildLectern(client, data.extras());
+        if (result == null && data.menuTypeId() == UiStateData.LECTERN_SCREEN) {
+            result = buildLectern(client, data.extras());
         }
-        return null;
+        // Beacon effects and nested saved-hotbar groups live here too, not only
+        // on the ordinary MenuScreens path.
+        if (result != null) {
+            ExtendedSupport.applyMenuState(client, result, null, data);
+        }
+        return result;
     }
 
     /** Fills the state that changed since the screen was opened. */
@@ -56,6 +89,10 @@ public final class SpecialScreens {
         if (screen == null) { return false; }
         if (!ReplayUIConfig.showSpecialScreens) { return false; }
         ScreenExtras ex = data.extras() == null ? ScreenExtras.EMPTY : data.extras();
+        if (ExtendedSupport.refreshNonContainer(screen, data)) { return true; }
+        // Trailing-block state (beacon, hotbar presets, recipe book, recorded
+        // creative item list) changes with the sample too, not only on open.
+        ExtendedSupport.applyMenuState(Minecraft.getInstance(), screen, null, data);
         if (data.menuTypeId() == UiStateData.CREATIVE_INVENTORY) {
             applyCreativeState(screen, ex);
             return true;
@@ -100,8 +137,11 @@ public final class SpecialScreens {
         Object inventory = ScreenReflect.call(player, "getInventory", "getInventoryMenu");
         Object connection = ScreenReflect.get(player, "connection");
         Object flags = ScreenReflect.call(connection, "enabledFeatures", "getEnabledFeatures");
+        // construct() walks every declared constructor and fills each parameter
+        // by type from this pool, so extra harmless values only widen coverage.
         Object screen = ScreenReflect.construct(cls, player, flags,
-                Boolean.TRUE, inventory, Component.empty());
+                Boolean.TRUE, Boolean.FALSE, inventory, Component.empty(),
+                client.level, Integer.valueOf(0));
         if (!(screen instanceof Screen)) {
             DebugLog.verbose("creative screen could not be constructed - skipping");
             return null;
@@ -132,8 +172,16 @@ public final class SpecialScreens {
                     new Object[]{Integer.valueOf(ex.selectedTab())},
                     "byId", "byIdOrThrow", "get");
             if (tab != null) {
-                ScreenReflect.setStatic(ScreenReflect.find(CREATIVE_NAMES),
-                        tab, "selectedTab");
+                Class<?> cls = ScreenReflect.find(CREATIVE_NAMES);
+                if (!tabHijacked && cls != null) {
+                    // Save once, before the first write. The field is static,
+                    // so without this the viewer's own tab would stay changed
+                    // after the replay ends.
+                    originalTab = ScreenReflect.getStatic(cls, "selectedTab");
+                    hijackedClass = cls;
+                    tabHijacked = true;
+                }
+                ScreenReflect.setStatic(cls, tab, "selectedTab");
             }
         }
     }
@@ -146,8 +194,18 @@ public final class SpecialScreens {
         }
         Class<?> accessClass = ScreenReflect.find(BOOK_ACCESS_NAMES);
         List<Object> components = new ArrayList<Object>();
-        for (String page : ex.bookPages()) {
-            components.add(Component.literal(page));
+        java.util.List<String> rich = ex.extended() == null
+                ? java.util.Collections.<String>emptyList()
+                : ex.extended().richPages();
+        if (!rich.isEmpty()) {
+            for (String json : rich) {
+                Object c = parseComponent(json);
+                components.add(c == null ? Component.literal("") : c);
+            }
+        } else {
+            for (String page : ex.bookPages()) {
+                components.add(Component.literal(page));
+            }
         }
         Object access = null;
         if (accessClass != null) {
@@ -157,7 +215,8 @@ public final class SpecialScreens {
         }
         Object player = client.player;
         Object screen = ScreenReflect.construct(cls, player, access,
-                Component.empty(), Boolean.TRUE);
+                Component.empty(), Boolean.TRUE, Boolean.FALSE,
+                client.level, ItemStack.EMPTY, Integer.valueOf(0));
         if (!(screen instanceof Screen)) {
             DebugLog.verbose("lectern screen could not be constructed - skipping");
             return null;
@@ -165,8 +224,19 @@ public final class SpecialScreens {
         if (access != null) {
             ScreenReflect.set(screen, access, "bookAccess", "access", "book");
         }
+        if (!ex.bookTitle().isEmpty()) {
+            ScreenReflect.set(screen, ex.bookTitle(), "bookTitle", "title");
+        }
+        if (!ex.bookAuthor().isEmpty()) {
+            ScreenReflect.set(screen, ex.bookAuthor(), "bookAuthor", "author");
+        }
         applyBookPage((Screen) screen, ex);
         return (Screen) screen;
+    }
+
+    /** Rich-text pages are stored as Component JSON; fall back to literal. */
+    private static Object parseComponent(String json) {
+        return com.replayui.util.ComponentJson.fromJson(json);
     }
 
     private static void applyBookPage(Screen screen, ScreenExtras ex) {

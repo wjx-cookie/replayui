@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI：介面已顯示",
   "replayui.ui.off": "ReplayUI：介面已隱藏",
   "replayui.detach": "ReplayUI：已脫離附身，相機恢復自由，介面不再自動出現",
-  "replayui.reattach": "ReplayUI：已恢復，容器介面會重新出現"
+  "replayui.reattach": "ReplayUI：已恢復，容器介面會重新出現",
+  "replayui.config.title": "ReplayUI 設定",
+  "replayui.config.done": "完成",
+  "replayui.config.cancel": "取消",
+  "replayui.config.on": "開",
+  "replayui.config.off": "關",
+  "replayui.config.source": "游標來源：%s",
+  "replayui.config.override": "自訂圖片已覆蓋系統樣式跟隨",
+  "replayui.config.hint": "按「完成」後生效並儲存",
+  "replayui.config.showSpecialScreens": "特殊介面",
+  "replayui.config.showRecordedTooltips": "顯示物品提示",
+  "replayui.config.followSystemCursorStyle": "跟隨系統游標樣式",
+  "replayui.config.followSystemCursorSize": "跟隨系統游標大小",
+  "replayui.config.cursorScale": "游標縮放",
+  "replayui.config.cursorMaxHeight": "游標最大高度",
+  "replayui.config.preview": "游標預覽",
+  "replayui.config.previewScaled": "按實際大小的 %s% 顯示",
+  "replayui.config.systemUnavailable": "無法讀取系統游標，已顯示內建箭頭"
 }

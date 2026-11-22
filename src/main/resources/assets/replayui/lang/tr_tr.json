@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: arayüzler görünüyor",
   "replayui.ui.off": "ReplayUI: arayüzler gizli",
   "replayui.detach": "ReplayUI: bağlantı kesildi, kamera serbest ve arayüzler kapalı kalıyor",
-  "replayui.reattach": "ReplayUI: yeniden bağlandı, konteyner arayüzleri tekrar görünecek"
+  "replayui.reattach": "ReplayUI: yeniden bağlandı, konteyner arayüzleri tekrar görünecek",
+  "replayui.config.title": "ReplayUI Ayarları",
+  "replayui.config.done": "Tamam",
+  "replayui.config.cancel": "İptal",
+  "replayui.config.on": "AÇIK",
+  "replayui.config.off": "KAPALI",
+  "replayui.config.source": "İmleç kaynağı: %s",
+  "replayui.config.override": "Özel görsel sistem stilini geçersiz kılar",
+  "replayui.config.hint": "«Tamam» ile uygulanır",
+  "replayui.config.showSpecialScreens": "Özel ekranlar",
+  "replayui.config.showRecordedTooltips": "Eşya ipuçları",
+  "replayui.config.followSystemCursorStyle": "Sistem imleç stilini izle",
+  "replayui.config.followSystemCursorSize": "Sistem imleç boyutunu izle",
+  "replayui.config.cursorScale": "İmleç ölçeği",
+  "replayui.config.cursorMaxHeight": "Azami imleç yüksekliği",
+  "replayui.config.preview": "İmleç önizlemesi",
+  "replayui.config.previewScaled": "gerçek boyutun %s% kadarıyla gösteriliyor",
+  "replayui.config.systemUnavailable": "Sistem imleci okunamadı - yerleşik ok gösteriliyor"
 }

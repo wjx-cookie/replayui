@@ -40,11 +40,17 @@ public final class UiStateReader {
 
     public static UiStateData capture(Minecraft client, UUID ownerUuid) {
         Screen screen = client.screen;
+        // Non-container screens (book, sign, command/structure block) have
+        // no menu at all and must be branched off before the instanceof test.
+        UiStateData nonContainer =
+                ExtendedReader.captureNonContainer(client, screen, ownerUuid);
+        if (nonContainer != null) { return nonContainer; }
         // Creative / horse / lectern are handled before the container test.
         // Returning early here leaves the existing instanceof line untouched.
         int specialKind = SpecialScreenReader.kindOf(screen);
         if (specialKind != SpecialScreenReader.NONE) {
-            return SpecialScreenReader.capture(client, screen, specialKind, ownerUuid);
+            return ExtendedReader.augmentData(client, screen,
+                    SpecialScreenReader.capture(client, screen, specialKind, ownerUuid));
         }
         if (!(screen instanceof AbstractContainerScreen<?> containerScreen)) {
             AbstractContainerMenu fallback = client.player == null
@@ -158,8 +164,16 @@ public final class UiStateReader {
 
         // blockPos left null: positioning is solved by aligning the viewer's
         // yaw with the recorded player, so the block is not needed.
+        //
+        // Format 6: ordinary MenuType containers also carry state that never
+        // lives in slots or ContainerData - villager offers, the anvil rename
+        // text, enchantment clues. Reading it here (rather than in the special
+        // screen path) is what makes MerchantScreen show its trade column.
+        ScreenExtras extras = MenuExtrasReader.read(client, containerScreen, menu);
+        extras = ExtendedReader.augment(client, containerScreen, menu, extras);
         return new UiStateData(ownerUuid, true, menuTypeId, containerScreen.getTitle(),
                 items, carried, menu.containerId, rawX, rawY, null,
-                RecordedDataSlots.snapshot(), winW, winH, ScreenExtras.EMPTY);
+                RecordedDataSlots.snapshot(), winW, winH, extras,
+                UiStateData.EVENT_NONE);
     }
 }

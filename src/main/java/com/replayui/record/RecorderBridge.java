@@ -42,6 +42,32 @@ public final class RecorderBridge {
         if (recorder == null) {
             return;
         }
+        // The baseline path measures before writing because vanilla caps a
+        // custom payload at 1 MiB and Flashback drops a packet that fails to
+        // encode without a single log line. Format 6 lets one sample carry up
+        // to 96 text + 96 number slots, 16x64 saved-hotbar stacks and 64 rich
+        // book pages, so the delta path can exceed that cap too. Measure here
+        // as well; an oversized sample is reported instead of silently losing
+        // the whole screen state for that tick. If the registry access cannot
+        // be obtained, keep the old behaviour rather than dropping writes.
+        try {
+            Minecraft client = Minecraft.getInstance();
+            if (client != null && client.level != null) {
+                int size = UiStateCodec.measureEncodedSize(
+                        client.level.registryAccess(), data);
+                if (size < 0) {
+                    DebugLog.warn("ui delta failed to encode, skipping");
+                    return;
+                }
+                if (size > UiStateCodec.MAX_PAYLOAD_BYTES) {
+                    DebugLog.warn("ui delta too large (" + size
+                            + " bytes), skipping this sample");
+                    return;
+                }
+            }
+        } catch (Exception ignored) {
+            // Measuring is best-effort; never let it stop a real write.
+        }
         try {
             recorder.submitCustomTask(writer -> {
                 writer.startAction(ACTION);

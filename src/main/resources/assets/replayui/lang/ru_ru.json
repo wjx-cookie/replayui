@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: интерфейсы показаны",
   "replayui.ui.off": "ReplayUI: интерфейсы скрыты",
   "replayui.detach": "ReplayUI: отсоединено, камера свободна, интерфейсы не открываются автоматически",
-  "replayui.reattach": "ReplayUI: присоединено снова, интерфейсы контейнеров снова будут показаны"
+  "replayui.reattach": "ReplayUI: присоединено снова, интерфейсы контейнеров снова будут показаны",
+  "replayui.config.title": "Настройки ReplayUI",
+  "replayui.config.done": "Готово",
+  "replayui.config.cancel": "Отмена",
+  "replayui.config.on": "ВКЛ",
+  "replayui.config.off": "ВЫКЛ",
+  "replayui.config.source": "Источник курсора: %s",
+  "replayui.config.override": "Своя картинка отключает системный стиль",
+  "replayui.config.hint": "Применить кнопкой «Готово»",
+  "replayui.config.showSpecialScreens": "Особые экраны",
+  "replayui.config.showRecordedTooltips": "Подсказки предметов",
+  "replayui.config.followSystemCursorStyle": "Следовать стилю системного курсора",
+  "replayui.config.followSystemCursorSize": "Следовать размеру системного курсора",
+  "replayui.config.cursorScale": "Масштаб курсора",
+  "replayui.config.cursorMaxHeight": "Макс. высота курсора",
+  "replayui.config.preview": "Предпросмотр курсора",
+  "replayui.config.previewScaled": "показано в %s% от реального размера",
+  "replayui.config.systemUnavailable": "Системный курсор недоступен - показана встроенная стрелка"
 }

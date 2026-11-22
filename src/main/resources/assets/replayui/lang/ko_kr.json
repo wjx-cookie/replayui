@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: 화면 표시됨",
   "replayui.ui.off": "ReplayUI: 화면 숨겨짐",
   "replayui.detach": "ReplayUI: 부착이 해제되었습니다. 카메라가 자유롭고 화면은 자동으로 열리지 않습니다",
-  "replayui.reattach": "ReplayUI: 다시 부착했습니다. 컨테이너 화면이 다시 표시됩니다"
+  "replayui.reattach": "ReplayUI: 다시 부착했습니다. 컨테이너 화면이 다시 표시됩니다",
+  "replayui.config.title": "ReplayUI 설정",
+  "replayui.config.done": "완료",
+  "replayui.config.cancel": "취소",
+  "replayui.config.on": "켜짐",
+  "replayui.config.off": "꺼짐",
+  "replayui.config.source": "커서 출처: %s",
+  "replayui.config.override": "사용자 이미지가 시스템 스타일跟随을 덮어씀",
+  "replayui.config.hint": "「완료」를 누르면 적용·저장",
+  "replayui.config.showSpecialScreens": "특수 화면",
+  "replayui.config.showRecordedTooltips": "아이템 설명 표시",
+  "replayui.config.followSystemCursorStyle": "시스템 커서 모양 따르기",
+  "replayui.config.followSystemCursorSize": "시스템 커서 크기 따르기",
+  "replayui.config.cursorScale": "커서 배율",
+  "replayui.config.cursorMaxHeight": "커서 최대 높이",
+  "replayui.config.preview": "커서 미리보기",
+  "replayui.config.previewScaled": "실제 크기의 %s%로 표시",
+  "replayui.config.systemUnavailable": "시스템 커서를 읽을 수 없습니다 - 기본 화살표 표시 중"
 }

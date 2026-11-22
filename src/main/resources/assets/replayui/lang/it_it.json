@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: interfacce visibili",
   "replayui.ui.off": "ReplayUI: interfacce nascoste",
   "replayui.detach": "ReplayUI: staccato, la camera è libera e le interfacce restano chiuse",
-  "replayui.reattach": "ReplayUI: riattaccato, le interfacce contenitore riappariranno"
+  "replayui.reattach": "ReplayUI: riattaccato, le interfacce contenitore riappariranno",
+  "replayui.config.title": "Impostazioni ReplayUI",
+  "replayui.config.done": "Fatto",
+  "replayui.config.cancel": "Annulla",
+  "replayui.config.on": "SÌ",
+  "replayui.config.off": "NO",
+  "replayui.config.source": "Sorgente cursore: %s",
+  "replayui.config.override": "Immagine propria: lo stile di sistema è ignorato",
+  "replayui.config.hint": "Applica con «Fatto»",
+  "replayui.config.showSpecialScreens": "Schermate speciali",
+  "replayui.config.showRecordedTooltips": "Tooltip oggetti",
+  "replayui.config.followSystemCursorStyle": "Segui stile cursore di sistema",
+  "replayui.config.followSystemCursorSize": "Segui dimensione cursore di sistema",
+  "replayui.config.cursorScale": "Scala cursore",
+  "replayui.config.cursorMaxHeight": "Altezza max cursore",
+  "replayui.config.preview": "Anteprima del cursore",
+  "replayui.config.previewScaled": "mostrato al %s% della dimensione reale",
+  "replayui.config.systemUnavailable": "Cursore di sistema non disponibile: mostrata la freccia incorporata"
 }

@@ -44,6 +44,11 @@ public final class VanillaCursor {
         update(rawX, rawY, 0, 0);
     }
 
+    public static void update(double rawX, double rawY,
+                              int recordedWidth, int recordedHeight) {
+        update(rawX, rawY, recordedWidth, recordedHeight, false);
+    }
+
     /**
      * Maps recorded raw pixels onto the viewer's current GUI size.
      *
@@ -56,7 +61,7 @@ public final class VanillaCursor {
      * fall back to the scale-only conversion (the previous behaviour).
      */
     public static void update(double rawX, double rawY,
-                              int recordedWidth, int recordedHeight) {
+                              int recordedWidth, int recordedHeight, boolean pin) {
         Minecraft client = Minecraft.getInstance();
         if (client == null) {
             return;
@@ -81,7 +86,7 @@ public final class VanillaCursor {
             guiY = rawY / scale;
         }
         CursorInterpolator.update(guiX, guiY,
-                System.nanoTime(), ReplayUIConfig.smoothCursor);
+                System.nanoTime(), ReplayUIConfig.smoothCursor && !pin);
         active = true;
     }
 
@@ -110,13 +115,27 @@ public final class VanillaCursor {
         return active;
     }
 
-    /** Recorded X in GUI coordinates, interpolated for this frame. */
-    public static int recordedX() {
-        return (int) Math.round(CursorInterpolator.x(System.nanoTime()));
+    /**
+     * Recorded X for drawing. Kept fractional: rounding to whole GUI pixels
+     * before GuiGraphics sees it costs up to guiScale physical pixels and is
+     * the main reason a fast-moving pointer looks like it is stepping.
+     */
+    public static double recordedXf() {
+        return CursorInterpolator.x(System.nanoTime());
     }
 
-    /** Recorded Y in GUI coordinates, interpolated for this frame. */
+    /** Recorded Y for drawing, fractional. */
+    public static double recordedYf() {
+        return CursorInterpolator.y(System.nanoTime());
+    }
+
+    /** Integer form, for the mixin that replaces render's mouseX argument. */
+    public static int recordedX() {
+        return (int) Math.round(recordedXf());
+    }
+
+    /** Integer form, for the mixin that replaces render's mouseY argument. */
     public static int recordedY() {
-        return (int) Math.round(CursorInterpolator.y(System.nanoTime()));
+        return (int) Math.round(recordedYf());
     }
 }

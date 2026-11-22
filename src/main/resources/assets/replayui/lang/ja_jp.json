@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: 画面を表示",
   "replayui.ui.off": "ReplayUI: 画面を非表示",
   "replayui.detach": "ReplayUI: 憑依を解除しました。カメラは自由になり、画面は自動表示されません",
-  "replayui.reattach": "ReplayUI: 再開しました。コンテナ画面が再び表示されます"
+  "replayui.reattach": "ReplayUI: 再開しました。コンテナ画面が再び表示されます",
+  "replayui.config.title": "ReplayUI 設定",
+  "replayui.config.done": "完了",
+  "replayui.config.cancel": "キャンセル",
+  "replayui.config.on": "オン",
+  "replayui.config.off": "オフ",
+  "replayui.config.source": "カーソル元: %s",
+  "replayui.config.override": "カスタム画像がシステム様式の追従を上書き",
+  "replayui.config.hint": "「完了」で反映・保存",
+  "replayui.config.showSpecialScreens": "特殊画面",
+  "replayui.config.showRecordedTooltips": "アイテム説明を表示",
+  "replayui.config.followSystemCursorStyle": "システムのカーソル柄に従う",
+  "replayui.config.followSystemCursorSize": "システムのカーソルサイズに従う",
+  "replayui.config.cursorScale": "カーソル倍率",
+  "replayui.config.cursorMaxHeight": "カーソル最大高さ",
+  "replayui.config.preview": "カーソルのプレビュー",
+  "replayui.config.previewScaled": "実際のサイズの %s% で表示",
+  "replayui.config.systemUnavailable": "システムカーソルを読み込めません - 内蔵矢印を表示中"
 }

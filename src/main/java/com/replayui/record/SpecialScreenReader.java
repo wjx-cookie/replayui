@@ -134,7 +134,7 @@ public final class SpecialScreenReader {
 
         return new UiStateData(ownerUuid, true, menuTypeId, screen.getTitle(),
                 items, carried, containerId, rawX, rawY, null, dataSlots,
-                winW, winH, read(screen, kind));
+                winW, winH, read(screen, kind), UiStateData.EVENT_NONE);
     }
 
     /** Reflective read of the state that has no equivalent in menu.slots. */
@@ -190,10 +190,25 @@ public final class SpecialScreenReader {
             }
             Object page = ScreenReflect.get(screen, "currentPage", "page");
             int pageValue = page instanceof Number ? ((Number) page).intValue() : 0;
-            return new ScreenExtras(-1, 0, -1, 0.0f, "", 0, pages, pageValue);
+            String title = textField(screen, "bookTitle", "title", "bookName");
+            String author = textField(screen, "bookAuthor", "author", "writer");
+            return new ScreenExtras(-1, 0, -1, 0.0f, "", 0, pages, pageValue,
+                    java.util.Collections.<com.replayui.codec.MerchantOfferData>emptyList(), "",
+                    new int[0], new int[0], -1,
+                    title, author, 0.0f, -1, 0, 0, -1, false, 0);
         }
 
         return ScreenExtras.EMPTY;
+    }
+
+    private static String textField(Object target, String... names) {
+        Object v = ScreenReflect.get(target, names);
+        if (v instanceof String) { return (String) v; }
+        if (v != null) {
+            Object s = ScreenReflect.call(v, "getString", "getText", "toString");
+            if (s instanceof String) { return (String) s; }
+        }
+        return "";
     }
 
     /** Plain-text fallback: a rich-text page survives as readable text. */

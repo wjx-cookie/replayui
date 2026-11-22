@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: interfaces visibles",
   "replayui.ui.off": "ReplayUI: interfaces ocultas",
   "replayui.detach": "ReplayUI: desvinculado, la cámara es libre y las interfaces permanecen cerradas",
-  "replayui.reattach": "ReplayUI: vinculado de nuevo, las interfaces de contenedor volverán a aparecer"
+  "replayui.reattach": "ReplayUI: vinculado de nuevo, las interfaces de contenedor volverán a aparecer",
+  "replayui.config.title": "Ajustes de ReplayUI",
+  "replayui.config.done": "Hecho",
+  "replayui.config.cancel": "Cancelar",
+  "replayui.config.on": "SÍ",
+  "replayui.config.off": "NO",
+  "replayui.config.source": "Origen del cursor: %s",
+  "replayui.config.override": "Imagen propia: el estilo del sistema queda sin efecto",
+  "replayui.config.hint": "Se aplica al pulsar «Hecho»",
+  "replayui.config.showSpecialScreens": "Pantallas especiales",
+  "replayui.config.showRecordedTooltips": "Información de objetos",
+  "replayui.config.followSystemCursorStyle": "Seguir el estilo del cursor del sistema",
+  "replayui.config.followSystemCursorSize": "Seguir el tamaño del cursor del sistema",
+  "replayui.config.cursorScale": "Escala del cursor",
+  "replayui.config.cursorMaxHeight": "Altura máx. del cursor",
+  "replayui.config.preview": "Vista previa del cursor",
+  "replayui.config.previewScaled": "mostrado al %s% del tamaño real",
+  "replayui.config.systemUnavailable": "Cursor del sistema no disponible: se muestra la flecha integrada"
 }

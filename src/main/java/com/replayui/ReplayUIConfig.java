@@ -3,8 +3,12 @@ package com.replayui;
 /**
  * Runtime switches.
  *
- * <p>Kept deliberately small: each flag maps to one behaviour that can be turned
- * off on its own, so a problem can be isolated without ripping the mod apart.
+ * <p>Only genuine preferences are configurable (see {@link com.replayui.config.ConfigStore}).
+ * Core behaviours - container rebuilding, the recorded player figure and pointer,
+ * UI in exported video, cursor smoothing, click pinning and item flight - are
+ * always on. They are never read from the config file: an old saved
+ * {@code enabled=false} must not silently disable the mod after an upgrade.
+ * {@link #enabled} is still flipped at runtime by the hotkey for the current session.
  */
 public final class ReplayUIConfig {
 
@@ -16,8 +20,9 @@ public final class ReplayUIConfig {
      * central gate, so a recording made while it was off stays consistent with
      * what playback expects.
      *
-     * <p>Always starts true - see the note on {@link ReplayUIKeybinds} about why
-     * the value is not persisted.
+     * <p>Always starts true in code. The Mod Menu config screen can persist a
+     * different value into {@code config/replayui/cursor.properties}; the
+     * hotkey still only changes it for the current session.
      */
     public static boolean enabled = true;
 
@@ -112,6 +117,60 @@ public final class ReplayUIConfig {
     public static int cursorHotspotY = 0;
 
     /**
+     * Uniform scale for the pointer picture, applied to every source including
+     * a player-supplied PNG. 1.0 draws it at its authored size. The shipped
+     * default is already a compact 10x16 arrow; this exists so a larger custom
+     * picture can be shrunk without editing the file.
+     */
+    public static double cursorScale = 1.0;
+
+    /**
+     * Use the desktop pointer's picture for the recorded cursor.
+     *
+     * <p>On Windows this reads the {@code Arrow} value under
+     * {@code HKCU\Control Panel\Cursors} and decodes the .cur / .ani file it
+     * points at. Off - or unreadable, or a non-Windows desktop - falls back to
+     * the shipped PNG and then the built-in bitmap.
+     *
+     * <p>Independent of {@link #followSystemCursorSize}: style and size are
+     * deliberately two switches. A player-supplied picture makes this one
+     * <em>inactive</em> (overridden) without changing its stored value, so
+     * removing that picture quietly restores system following.
+     */
+    public static boolean followSystemCursorStyle = true;
+
+    /**
+     * Match the desktop pointer's size for the recorded cursor.
+     *
+     * <p>Windows exposes it as {@code CursorBaseSize} (32 by default, 32..256)
+     * in the same registry key. Desktop pixels are divided by the game's GUI
+     * scale first: a 32px desktop pointer at guiScale 2 is 16 GUI pixels, the
+     * same height as the shipped arrow. Unreadable values leave
+     * {@link #cursorScale} in charge.
+     *
+     * <p>Still applies when a player picture has overridden the style; the two
+     * switches never gate each other.
+     */
+    public static boolean followSystemCursorSize = true;
+
+    /**
+     * Hard ceiling on the drawn pointer height, in GUI pixels, shrink-only.
+     *
+     * <p>Guards against a left-over custom PNG being several times too large.
+     * When {@link #followSystemCursorSize} is active the ceiling is raised to
+     * the desktop pointer's own GUI height (capped at 128), so a genuinely
+     * large system cursor is still followed. 8..128.
+     */
+    public static int cursorMaxHeight = 16;
+
+    /**
+     * Snap the recorded cursor exactly onto a sample taken at a click, and
+     * write that extra sample in the first place. Easing across a pickup or a
+     * place is what makes the pointer look half a slot behind the item.
+     */
+    public static boolean pinOnInteraction = true;
+
+    /**
      * Draw rebuilt containers into Flashback's exported video frames as well.
      *
      * <p>Flashback clears every screen before it captures a frame, so without
@@ -166,5 +225,14 @@ public final class ReplayUIConfig {
     public static boolean showSpecialScreens = true;
 
     private ReplayUIConfig() {
+    }
+
+    /**
+     * Load {@code config/replayui/cursor.properties} once, after the field
+     * defaults above are in place but before any consumer reads a switch.
+     * Keeping this here means the initializer needs no new call site.
+     */
+    static {
+        com.replayui.config.ConfigStore.load();
     }
 }

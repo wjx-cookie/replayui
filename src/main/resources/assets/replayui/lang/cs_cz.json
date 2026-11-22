@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: rozhraní zobrazena",
   "replayui.ui.off": "ReplayUI: rozhraní skryta",
   "replayui.detach": "ReplayUI: odpojeno, kamera je volná a rozhraní zůstávají zavřená",
-  "replayui.reattach": "ReplayUI: znovu připojeno, rozhraní kontejnerů se opět zobrazí"
+  "replayui.reattach": "ReplayUI: znovu připojeno, rozhraní kontejnerů se opět zobrazí",
+  "replayui.config.title": "Nastavení ReplayUI",
+  "replayui.config.done": "Hotovo",
+  "replayui.config.cancel": "Zrušit",
+  "replayui.config.on": "ANO",
+  "replayui.config.off": "NE",
+  "replayui.config.source": "Zdroj kurzoru: %s",
+  "replayui.config.override": "Vlastní obrázek potlačuje systémový styl",
+  "replayui.config.hint": "Použije se po «Hotovo»",
+  "replayui.config.showSpecialScreens": "Speciální obrazovky",
+  "replayui.config.showRecordedTooltips": "Popisky předmětů",
+  "replayui.config.followSystemCursorStyle": "Podle stylu systémového kurzoru",
+  "replayui.config.followSystemCursorSize": "Podle velikosti systémového kurzoru",
+  "replayui.config.cursorScale": "Měřítko kurzoru",
+  "replayui.config.cursorMaxHeight": "Max. výška kurzoru",
+  "replayui.config.preview": "Náhled kurzoru",
+  "replayui.config.previewScaled": "zobrazeno na %s% skutečné velikosti",
+  "replayui.config.systemUnavailable": "Systémový kurzor není dostupný - zobrazena výchozí šipka"
 }

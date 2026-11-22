@@ -98,6 +98,12 @@ public final class PlaybackTicker {
     private static final int REFRESH_FAILURE_LIMIT = 5;
 
     public static void onClientTick(Minecraft client) {
+        // Safety net for the one-frame experience-level borrow in
+        // RecordedXpLevel: if a screen's render() throws before its TAIL, the
+        // next tick must still hand the viewer's own level back. No-op when
+        // nothing was borrowed, so this costs nothing on ordinary ticks.
+        RecordedXpLevel.restoreIfStale();
+
         if (!ReplayUIConfig.enabled) {
             // Hotkey switched the mod off. Take down whatever is currently
             // rebuilt - including restoring the viewer's inventory, which is
@@ -255,7 +261,8 @@ public final class PlaybackTicker {
             UiStateData exportData = PlaybackState.current();
             if (exportData != null && ReplayUIConfig.captureMouse) {
                 VanillaCursor.update(exportData.mouseX(), exportData.mouseY(),
-                    exportData.windowWidth(), exportData.windowHeight());
+                    exportData.windowWidth(), exportData.windowHeight(),
+                    isEventSample(exportData));
             }
             return;
         }
@@ -477,7 +484,8 @@ public final class PlaybackTicker {
         if (ReplayUIConfig.captureMouse) {
             SpatialGuiCompat.injectMouse(data.mouseX(), data.mouseY());
             VanillaCursor.update(data.mouseX(), data.mouseY(),
-                    data.windowWidth(), data.windowHeight());
+                    data.windowWidth(), data.windowHeight(),
+                    isEventSample(data));
         }
     }
 
@@ -633,6 +641,9 @@ public final class PlaybackTicker {
         // every exit path comes through here.
         if (hadOurs) {
             VanillaCursor.clear();
+            // The creative tab is a static field on the vanilla screen class.
+            // Give the viewer's own selection back on every exit path.
+            SpecialScreens.release();
         }
 
         LocalPlayer player = client.player;
@@ -759,7 +770,8 @@ public final class PlaybackTicker {
 
         if (ReplayUIConfig.captureMouse) {
             VanillaCursor.update(data.mouseX(), data.mouseY(),
-                    data.windowWidth(), data.windowHeight());
+                    data.windowWidth(), data.windowHeight(),
+                    isEventSample(data));
         }
 
         Screen built = ContainerScreenBuilder.build(client, data);
@@ -801,5 +813,11 @@ public final class PlaybackTicker {
      */
     public static boolean isOurScreen(Screen screen) {
         return screen != null && (screen == ourScreen || screen == exportScreen);
+    }
+
+    /** Event samples snap the cursor; ordinary ones are eased. */
+    private static boolean isEventSample(UiStateData data) {
+        return ReplayUIConfig.pinOnInteraction
+                && data.eventKind() != UiStateData.EVENT_NONE;
     }
 }

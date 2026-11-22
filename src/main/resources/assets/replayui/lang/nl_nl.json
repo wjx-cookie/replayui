@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: schermen zichtbaar",
   "replayui.ui.off": "ReplayUI: schermen verborgen",
   "replayui.detach": "ReplayUI: losgekoppeld, camera is vrij en schermen blijven gesloten",
-  "replayui.reattach": "ReplayUI: opnieuw gekoppeld, containerschermen verschijnen weer"
+  "replayui.reattach": "ReplayUI: opnieuw gekoppeld, containerschermen verschijnen weer",
+  "replayui.config.title": "ReplayUI-instellingen",
+  "replayui.config.done": "Klaar",
+  "replayui.config.cancel": "Annuleren",
+  "replayui.config.on": "AAN",
+  "replayui.config.off": "UIT",
+  "replayui.config.source": "Cursorbron: %s",
+  "replayui.config.override": "Eigen afbeelding overschrijft systeemstijl",
+  "replayui.config.hint": "Toepassen met «Klaar»",
+  "replayui.config.showSpecialScreens": "Speciale schermen",
+  "replayui.config.showRecordedTooltips": "Item-tooltips",
+  "replayui.config.followSystemCursorStyle": "Systeemcursorstijl volgen",
+  "replayui.config.followSystemCursorSize": "Systeemcursorgrootte volgen",
+  "replayui.config.cursorScale": "Cursorschaal",
+  "replayui.config.cursorMaxHeight": "Max. cursorhoogte",
+  "replayui.config.preview": "Cursorvoorbeeld",
+  "replayui.config.previewScaled": "weergegeven op %s% van de echte grootte",
+  "replayui.config.systemUnavailable": "Systeemaanwijzer niet beschikbaar - ingebouwde pijl wordt getoond"
 }

@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: Oberflächen sichtbar",
   "replayui.ui.off": "ReplayUI: Oberflächen verborgen",
   "replayui.detach": "ReplayUI: losgelöst, Kamera ist frei und Oberflächen bleiben geschlossen",
-  "replayui.reattach": "ReplayUI: wieder angeheftet, Container-Oberflächen erscheinen erneut"
+  "replayui.reattach": "ReplayUI: wieder angeheftet, Container-Oberflächen erscheinen erneut",
+  "replayui.config.title": "ReplayUI Einstellungen",
+  "replayui.config.done": "Fertig",
+  "replayui.config.cancel": "Abbrechen",
+  "replayui.config.on": "AN",
+  "replayui.config.off": "AUS",
+  "replayui.config.source": "Zeigerquelle: %s",
+  "replayui.config.override": "Eigenes Bild übergeht die System-Zeigerform",
+  "replayui.config.hint": "Änderungen mit „Fertig“ übernehmen",
+  "replayui.config.showSpecialScreens": "Spezielle Bildschirme",
+  "replayui.config.showRecordedTooltips": "Item-Tooltips",
+  "replayui.config.followSystemCursorStyle": "System-Zeigerform folgen",
+  "replayui.config.followSystemCursorSize": "System-Zeigergröße folgen",
+  "replayui.config.cursorScale": "Zeigerskalierung",
+  "replayui.config.cursorMaxHeight": "Max. Zeigerhöhe",
+  "replayui.config.preview": "Cursor-Vorschau",
+  "replayui.config.previewScaled": "angezeigt bei %s% der echten Größe",
+  "replayui.config.systemUnavailable": "Systemcursor nicht verfügbar - Standardpfeil wird angezeigt"
 }

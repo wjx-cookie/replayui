@@ -22,6 +22,8 @@ public final class CursorInterpolator {
     private static boolean initialised;
     private static double fromX, fromY, toX, toY;
     private static long start;
+    /** Window for the current pair, adapted to how far apart samples really are. */
+    private static long window = WINDOW_NANOS;
 
     private CursorInterpolator() {
     }
@@ -30,6 +32,7 @@ public final class CursorInterpolator {
         initialised = false;
         fromX = fromY = toX = toY = 0.0;
         start = 0L;
+        window = WINDOW_NANOS;
     }
 
     /**
@@ -52,14 +55,23 @@ public final class CursorInterpolator {
         }
         double currentX = value(fromX, toX, now);
         double currentY = value(fromY, toY, now);
+        // A fixed 50 ms window is wrong during export (frames are not ticks)
+        // and whenever samples bunch up. Use the real gap, bounded so one
+        // stalled tick cannot make the pointer lag for a quarter of a second.
+        long gap = now - start;
+        if (gap > 0L) {
+            window = Math.max(10_000_000L, Math.min(WINDOW_NANOS, gap));
+        }
         fromX = currentX;
         fromY = currentY;
         toX = x;
         toY = y;
         start = now;
         if (!smooth) {
+            // pin: the click sample must land on its exact pixel immediately.
             fromX = toX;
             fromY = toY;
+            window = WINDOW_NANOS;
         }
     }
 
@@ -79,10 +91,10 @@ public final class CursorInterpolator {
         if (elapsed <= 0L) {
             return a;
         }
-        if (elapsed >= WINDOW_NANOS) {
+        if (elapsed >= window) {
             return b;
         }
-        double t = (double) elapsed / (double) WINDOW_NANOS;
+        double t = (double) elapsed / (double) window;
         // smoothstep: zero velocity at both ends, so consecutive samples join
         // without a visible corner.
         t = t * t * (3.0 - 2.0 * t);

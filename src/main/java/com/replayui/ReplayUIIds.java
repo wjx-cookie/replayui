@@ -45,7 +45,20 @@ public final class ReplayUIIds {
      * scrolling, horse/llama entity references and lectern book pages. Replays
      * made with 3 or earlier are rejected and must be re-recorded.
      */
-    public static final int FORMAT_VERSION = 4;
+    /**
+     * <p>5: added {@code eventKind} - a marker on samples taken at a click or
+     * at a pickup / place. Replays made with 4 or earlier are rejected by the
+     * version check and must be re-recorded.
+     *
+     * <p>6: added {@code ScreenExtras.MenuExtras} - merchant offers, anvil
+     * rename text and enchantment clues - AND, importantly, a per-sample length
+     * prefix in {@code encodeTick}. From 6 onward a reader skips any trailing
+     * bytes it does not understand, so adding a future field no longer forces
+     * every existing replay to be re-recorded. This is the last format bump
+     * that comes with that cost. Replays made with 5 or earlier are rejected by
+     * the version check and must be re-recorded once.
+     */
+    public static final int FORMAT_VERSION = 6;
 
     private ReplayUIIds() {
     }

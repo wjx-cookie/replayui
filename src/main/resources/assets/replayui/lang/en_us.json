@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: screens shown",
   "replayui.ui.off": "ReplayUI: screens hidden",
   "replayui.detach": "ReplayUI: detached, camera is yours and screens stay closed",
-  "replayui.reattach": "ReplayUI: reattached, container screens will show again"
+  "replayui.reattach": "ReplayUI: reattached, container screens will show again",
+  "replayui.config.title": "ReplayUI Settings",
+  "replayui.config.done": "Done",
+  "replayui.config.cancel": "Cancel",
+  "replayui.config.on": "ON",
+  "replayui.config.off": "OFF",
+  "replayui.config.source": "Cursor source: %s",
+  "replayui.config.override": "Custom picture overrides system style following",
+  "replayui.config.hint": "Changes apply on Done",
+  "replayui.config.showSpecialScreens": "Special screens",
+  "replayui.config.showRecordedTooltips": "Recorded tooltips",
+  "replayui.config.followSystemCursorStyle": "Follow system cursor style",
+  "replayui.config.followSystemCursorSize": "Follow system cursor size",
+  "replayui.config.cursorScale": "Cursor scale",
+  "replayui.config.cursorMaxHeight": "Max cursor height",
+  "replayui.config.preview": "Cursor preview",
+  "replayui.config.previewScaled": "shown at %s% of real size",
+  "replayui.config.systemUnavailable": "System cursor unavailable - showing the built-in arrow"
 }

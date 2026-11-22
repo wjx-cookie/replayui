@@ -12,6 +12,8 @@ base {
 
 repositories {
     mavenLocal()
+    // Mod Menu API only; nothing from it ends up in the produced jar.
+    maven { name = 'TerraformersMC'; url = 'https://maven.terraformersmc.com/releases/' }
 }
 
 dependencies {
@@ -53,6 +55,11 @@ dependencies {
                 + "Download it from Modrinth / CurseForge and put the jar in that folder. "
                 + "Any filename works, the whole directory is compiled against.")
     }
+
+    // Mod Menu is optional at runtime. Compile-only keeps the API off
+    // the runtime classpath and out of the jar; the modmenu entrypoint
+    // is simply never instantiated when the mod is absent.
+    modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
 
     // Spatial GUI is intentionally NOT a dependency: SpatialGuiCompat reaches
     // it by reflection so this mod still builds for versions where it exists.

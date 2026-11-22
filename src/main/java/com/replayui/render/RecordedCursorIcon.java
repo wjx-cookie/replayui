@@ -104,20 +104,44 @@ public final class RecordedCursorIcon {
         if (!VanillaCursor.isActive()) {
             return;
         }
-        draw(guiGraphics, VanillaCursor.recordedX(), VanillaCursor.recordedY());
+        draw(guiGraphics, VanillaCursor.recordedXf(), VanillaCursor.recordedYf());
     }
 
     /** Draws the pointer with its hotspot at {@code (x, y)}. */
     public static void draw(GuiGraphics guiGraphics, int x, int y) {
+        draw(guiGraphics, (double) x, (double) y);
+    }
+
+    /**
+     * Draws the pointer at a fractional position. The integer part goes into
+     * the fill coordinates and the remainder into a pose translation, so the
+     * arrow keeps sub-pixel precision without binding a texture or starting a
+     * new render batch. The translation is added on top of whatever transform
+     * the screen already carries (Spatial GUI's 3D panel included), then popped.
+     */
+    public static void draw(GuiGraphics guiGraphics, double x, double y) {
         if (guiGraphics == null) {
             return;
         }
         CursorTexture.Sprite sprite = CursorTexture.get();
         if (sprite == null) {
-            drawFallback(guiGraphics, x, y);
+            drawFallback(guiGraphics, (int) Math.round(x), (int) Math.round(y));
             return;
         }
-        drawSprite(guiGraphics, sprite, x - sprite.offsetX, y - sprite.offsetY);
+        double bx = x - sprite.offsetX;
+        double by = y - sprite.offsetY;
+        int ix = (int) Math.floor(bx);
+        int iy = (int) Math.floor(by);
+        double fx = bx - ix;
+        double fy = by - iy;
+        if (fx != 0.0 || fy != 0.0) {
+            guiGraphics.pose().pushPose();
+            guiGraphics.pose().translate(fx, fy, 0.0);
+            drawSprite(guiGraphics, sprite, ix, iy);
+            guiGraphics.pose().popPose();
+        } else {
+            drawSprite(guiGraphics, sprite, ix, iy);
+        }
     }
 
     /**
@@ -126,7 +150,7 @@ public final class RecordedCursorIcon {
      * custom multicolour PNG still costs only a handful of {@code fill} calls
      * per row. All drawing goes through the screen's own {@code GuiGraphics}.
      */
-    private static void drawSprite(GuiGraphics g, CursorTexture.Sprite s, int baseX, int baseY) {
+    public static void drawSprite(GuiGraphics g, CursorTexture.Sprite s, int baseX, int baseY) {
         drawPass(g, s, baseX, baseY, true);
         drawPass(g, s, baseX, baseY, false);
     }
@@ -160,7 +184,7 @@ public final class RecordedCursorIcon {
     }
 
     /** The original bitmap renderer, used only when no PNG could be loaded. */
-    static void drawFallback(GuiGraphics g, int x, int y) {
+    public static void drawFallback(GuiGraphics g, int x, int y) {
         for (int row = 0; row < SHAPE.length; row++) {
             String line = SHAPE[row];
             int col = 0;

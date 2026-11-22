@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: interfaces visíveis",
   "replayui.ui.off": "ReplayUI: interfaces ocultas",
   "replayui.detach": "ReplayUI: desanexado, a câmera está livre e as interfaces ficam fechadas",
-  "replayui.reattach": "ReplayUI: reanexado, as interfaces de contêiner aparecerão novamente"
+  "replayui.reattach": "ReplayUI: reanexado, as interfaces de contêiner aparecerão novamente",
+  "replayui.config.title": "Configurações do ReplayUI",
+  "replayui.config.done": "Concluir",
+  "replayui.config.cancel": "Cancelar",
+  "replayui.config.on": "SIM",
+  "replayui.config.off": "NÃO",
+  "replayui.config.source": "Origem do cursor: %s",
+  "replayui.config.override": "Imagem própria substitui o estilo do sistema",
+  "replayui.config.hint": "Aplicar ao clicar em «Concluir»",
+  "replayui.config.showSpecialScreens": "Telas especiais",
+  "replayui.config.showRecordedTooltips": "Dicas de itens",
+  "replayui.config.followSystemCursorStyle": "Seguir estilo do cursor do sistema",
+  "replayui.config.followSystemCursorSize": "Seguir tamanho do cursor do sistema",
+  "replayui.config.cursorScale": "Escala do cursor",
+  "replayui.config.cursorMaxHeight": "Altura máx. do cursor",
+  "replayui.config.preview": "Prévia do cursor",
+  "replayui.config.previewScaled": "exibido a %s% do tamanho real",
+  "replayui.config.systemUnavailable": "Cursor do sistema indisponível - exibindo a seta integrada"
 }

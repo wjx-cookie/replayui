@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI: interfaces affichées",
   "replayui.ui.off": "ReplayUI: interfaces masquées",
   "replayui.detach": "ReplayUI: détaché, la caméra est libre et les interfaces restent fermées",
-  "replayui.reattach": "ReplayUI: rattaché, les interfaces de conteneur réapparaîtront"
+  "replayui.reattach": "ReplayUI: rattaché, les interfaces de conteneur réapparaîtront",
+  "replayui.config.title": "Paramètres ReplayUI",
+  "replayui.config.done": "Terminé",
+  "replayui.config.cancel": "Annuler",
+  "replayui.config.on": "ACTIVÉ",
+  "replayui.config.off": "DÉSACTIVÉ",
+  "replayui.config.source": "Source du curseur : %s",
+  "replayui.config.override": "Image personnalisée : suivi du style système ignoré",
+  "replayui.config.hint": "Appliquer avec « Terminé »",
+  "replayui.config.showSpecialScreens": "Écrans spéciaux",
+  "replayui.config.showRecordedTooltips": "Infobulles",
+  "replayui.config.followSystemCursorStyle": "Suivre le style du curseur système",
+  "replayui.config.followSystemCursorSize": "Suivre la taille du curseur système",
+  "replayui.config.cursorScale": "Échelle du curseur",
+  "replayui.config.cursorMaxHeight": "Hauteur max. du curseur",
+  "replayui.config.preview": "Aperçu du curseur",
+  "replayui.config.previewScaled": "affiché à %s% de la taille réelle",
+  "replayui.config.systemUnavailable": "Curseur système indisponible - flèche de secours affichée"
 }

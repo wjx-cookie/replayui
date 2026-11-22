@@ -5,6 +5,7 @@ import com.replayui.ReplayUIConfig;
 import com.replayui.codec.UiStateData;
 import com.replayui.log.DebugLog;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
 
 /**
@@ -109,11 +110,29 @@ public final class UiSampler {
         // Cursor recording is opt-out. Zeroing here rather than in the reader
         // keeps the reader a pure "what is on screen" probe.
         if (!ReplayUIConfig.captureMouse && (data.mouseX() != 0 || data.mouseY() != 0)) {
-            data = new UiStateData(data.ownerUuid(), data.open(), data.menuTypeId(),
+            data = withEvent(new UiStateData(data.ownerUuid(), data.open(), data.menuTypeId(),
                     data.title(), data.items(), data.carried(),
                     data.containerId(), 0.0, 0.0, data.blockPos(),
                     data.dataSlots(), data.windowWidth(), data.windowHeight(),
-                    data.extras());
+                    data.extras(), UiStateData.EVENT_NONE), data.eventKind());
+        }
+
+        // A pickup / a place is the one moment the pointer must not be eased:
+        // smoothstepping across it leaves the arrow half a slot behind the item
+        // that just left or entered the hand. Mark the tick so playback pins it.
+        int kind = UiStateData.EVENT_NONE;
+        if (ReplayUIConfig.pinOnInteraction && lastWritten != null
+                && lastWritten.open() && data.open()) {
+            boolean before = isEmptyCarried(lastWritten);
+            boolean after = isEmptyCarried(data);
+            if (before && !after) {
+                kind = UiStateData.EVENT_PICKUP;
+            } else if (!before && after) {
+                kind = UiStateData.EVENT_PLACE;
+            }
+        }
+        if (kind != UiStateData.EVENT_NONE) {
+            data = withEvent(data, kind);
         }
 
         // State model: skip the write when nothing changed. Keeps files small
@@ -135,6 +154,54 @@ public final class UiSampler {
         DebugLog.verbose("sample open=" + data.open() + " menu=" + data.menuTypeId()
                 + " slots=" + data.items().size());
         RecorderBridge.writeDelta(data);
+    }
+
+    /** Rebuild a sample with a new event marker, leaving every other field alone. */
+    static UiStateData withEvent(UiStateData data, int kind) {
+        return new UiStateData(data.ownerUuid(), data.open(), data.menuTypeId(),
+                data.title(), data.items(), data.carried(), data.containerId(),
+                data.mouseX(), data.mouseY(), data.blockPos(), data.dataSlots(),
+                data.windowWidth(), data.windowHeight(), data.extras(), kind);
+    }
+
+    private static boolean isEmptyCarried(UiStateData data) {
+        return data.carried() == null || data.carried().isEmpty();
+    }
+
+    /**
+     * A dedicated, sub-tick sample taken in the click handler itself rather
+     * than waiting for the next client tick. By the time the tick runs the mouse
+     * may already have moved on, so its coordinates are not the ones the item
+     * was actually picked up or placed at.
+     *
+     * <p>Written as its own action; the replay sends it before that tick's
+     * ordinary sample, so playback first snaps to the exact click position and
+     * then applies the resulting state. Nothing is captured while watching a
+     * replay, and a screen that is not a container is ignored.
+     */
+    public static void recordClickEvent(Minecraft client, int button) {
+        if (!ReplayUIConfig.enabled || !ReplayUIConfig.captureMouse
+                || !ReplayUIConfig.pinOnInteraction) {
+            return;
+        }
+        if (client == null || client.level == null || client.player == null
+                || (button != 0 && button != 1)
+                || !(client.screen instanceof AbstractContainerScreen)) {
+            return;
+        }
+        try {
+            if (Flashback.RECORDER == null || Flashback.isInReplay()) {
+                return;
+            }
+            UiStateData data = UiStateReader.capture(client, client.player.getUUID());
+            data = withEvent(data, UiStateData.EVENT_CLICK);
+            lastWritten = data;
+            RecorderBridge.writeDelta(data);
+            DebugLog.verbose("click event sample x=" + data.mouseX() + " y=" + data.mouseY());
+        } catch (Throwable t) {
+            // A probe failing here must never break a real click.
+            DebugLog.verbose("click event sample skipped: " + t);
+        }
     }
 
     private static boolean isRecording(Minecraft client) {

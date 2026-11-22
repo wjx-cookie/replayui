@@ -8,5 +8,22 @@
   "replayui.ui.on": "ReplayUI：界面已显示",
   "replayui.ui.off": "ReplayUI：界面已隐藏",
   "replayui.detach": "ReplayUI：已脱离附身，相机已恢复自由，界面不再自动出现",
-  "replayui.reattach": "ReplayUI：已恢复，容器界面会重新出现"
+  "replayui.reattach": "ReplayUI：已恢复，容器界面会重新出现",
+  "replayui.config.title": "ReplayUI 设置",
+  "replayui.config.done": "完成",
+  "replayui.config.cancel": "取消",
+  "replayui.config.on": "开",
+  "replayui.config.off": "关",
+  "replayui.config.source": "光标来源：%s",
+  "replayui.config.override": "自定义图片已覆盖系统样式跟随",
+  "replayui.config.hint": "点「完成」后生效并保存",
+  "replayui.config.showSpecialScreens": "特殊界面",
+  "replayui.config.showRecordedTooltips": "显示物品提示",
+  "replayui.config.followSystemCursorStyle": "跟随系统光标样式",
+  "replayui.config.followSystemCursorSize": "跟随系统光标大小",
+  "replayui.config.cursorScale": "光标缩放",
+  "replayui.config.cursorMaxHeight": "光标最大高度",
+  "replayui.config.preview": "光标预览",
+  "replayui.config.previewScaled": "按实际大小的 %s% 显示",
+  "replayui.config.systemUnavailable": "无法读取系统光标，已显示内置箭头"
 }

@@ -57,10 +57,20 @@ public record UiStateData(
         int[] dataSlots,
         int windowWidth,
         int windowHeight,
-        ScreenExtras extras
+        ScreenExtras extras,
+        int eventKind
 ) {
 
     public static final int NO_MENU_TYPE = -1;
+
+    /** Ordinary once-per-tick state sample. */
+    public static final int EVENT_NONE = 0;
+    /** Extra sample captured in the mouse-click handler, at the exact click position. */
+    public static final int EVENT_CLICK = 1;
+    /** A tick where the carried stack went from empty to non-empty. */
+    public static final int EVENT_PICKUP = 2;
+    /** A tick where the carried stack went from non-empty to empty. */
+    public static final int EVENT_PLACE = 3;
 
     /**
      * Marker for the player's own inventory (the screen you get by pressing E).
@@ -85,6 +95,17 @@ public record UiStateData(
      */
     public static final int LECTERN_SCREEN = -4;
 
+    /** Book & quill editing screen (no MenuType, no slots). */
+    public static final int BOOK_EDIT_SCREEN = -5;
+    /** Written book / lectern reading screen. */
+    public static final int BOOK_VIEW_SCREEN = -6;
+    /** Sign edit screen (standing or hanging). */
+    public static final int SIGN_EDIT_SCREEN = -7;
+    /** Command block edit screen. */
+    public static final int COMMAND_BLOCK_SCREEN = -8;
+    /** Structure block edit screen. */
+    public static final int STRUCTURE_BLOCK_SCREEN = -9;
+
     /** Horse/llama inventories keep their real registry id and only carry an
      *  entity reference in {@link ScreenExtras}. */
     public static boolean hasHorseEntity(ScreenExtras extras) {
@@ -94,12 +115,13 @@ public record UiStateData(
     public static UiStateData closed(UUID ownerUuid) {
         return new UiStateData(ownerUuid, false, NO_MENU_TYPE, Component.empty(),
                 List.of(), ItemStack.EMPTY, 0, 0.0, 0.0, null, new int[0], 0, 0,
-                ScreenExtras.EMPTY);
+                ScreenExtras.EMPTY, EVENT_NONE);
     }
 
     /** Screens that cannot be rebuilt through the MenuType registry. */
     public boolean isSpecialScreen() {
-        return menuTypeId == CREATIVE_INVENTORY || menuTypeId == LECTERN_SCREEN;
+        return menuTypeId <= CREATIVE_INVENTORY
+                && menuTypeId >= STRUCTURE_BLOCK_SCREEN;
     }
 
     public boolean hasMenuType() {
@@ -152,6 +174,9 @@ public record UiStateData(
         if (windowWidth != other.windowWidth || windowHeight != other.windowHeight) {
             return false;
         }
+        // eventKind is deliberately NOT part of sameAs: it describes how the
+        // sample was captured, not what is on screen. Two otherwise identical
+        // states must still de-duplicate even if one carries a marker.
         if (!java.util.Objects.equals(extras, other.extras)) {
             return false;
         }

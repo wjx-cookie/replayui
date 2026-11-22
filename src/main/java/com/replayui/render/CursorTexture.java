@@ -1,67 +1,57 @@
 package com.replayui.render;
 
 import com.replayui.ReplayUIConfig;
-import net.minecraft.client.Minecraft;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.resources.ResourceManager;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.function.DoubleSupplier;
 
 /**
- * Where the recorded pointer's picture comes from.
+ * Where the recorded pointer comes from, and how big it is drawn.
  *
- * <p>The sprite is a PNG, not a hardcoded bitmap. Four sources are tried in
- * order, and each one that fails simply falls through to the next:
- *
+ * <p>Sources, in order. A player picture always wins over a system one:
  * <ol>
- *   <li>{@code config/replayui/cursor.png} - a plain file next to the game's
- *       config folder. This is the one a player edits; drop a PNG there and
- *       it wins over everything else.</li>
- *   <li>The resource-pack path named by {@code texture} in
- *       {@code config/replayui/cursor.properties}, default
- *       {@code replayui:textures/gui/recorded_cursor.png}. Any resource pack
- *       can override that path in the usual way. 1.21.1's
- *       {@code ResourceProvider#open(ResourceLocation)} resolves packs by
- *       priority, so no pack enumeration is needed here.</li>
- *   <li>The same PNG shipped inside the mod jar, read from the classpath.</li>
- *   <li>The built-in arrow bitmap in {@link RecordedCursorIcon}, so a broken
- *       or missing PNG can never make the pointer disappear.</li>
+ *   <li>{@code config/replayui/cursor.png} (or a {@code texture=} pointing at
+ *       a resource pack, or a pack overriding the default path).</li>
+ *   <li>The desktop pointer, but only while {@code followSystemCursorStyle}
+ *       is active - see below.</li>
+ *   <li>The resource-pack / jar PNG.</li>
+ *   <li>The built-in arrow bitmap in {@link RecordedCursorIcon}.</li>
  * </ol>
  *
- * <p>The decoded pixels are drawn with {@code GuiGraphics#fill} rather than
- * bound as a texture and blitted. That is deliberate: a fill is another draw
- * call in the screen's existing batch, so it inherits the pose of the
- * {@code GuiGraphics} it is given. Binding a texture would flush that batch
- * and could detach the pointer from a scaled, rotated or Spatial GUI 3D panel.
+ * <p>"Inactive" is deliberately not "off": when a player picture is present,
+ * style following is overridden for as long as that picture exists, but the
+ * stored option stays {@code true} and is never written back to the config.
+ * Delete the picture and system following quietly resumes. Size following is
+ * a separate switch and is never blocked by a player picture.
  *
- * <p>Decoding is cached. Replacing a file or reloading resource packs takes
- * effect within {@link #TTL_NANOS} without a restart, without touching the
- * disk on every frame.
+ * <p>Everything is decoded to pixels and drawn with {@code GuiGraphics#fill}
+ * rather than bound as a texture: a fill inherits the screen's pose, so a
+ * Spatial GUI 3D panel carries the pointer with it and an exported frame keeps
+ * it. Minecraft classes are reached reflectively so a wrong mapping name can
+ * only cost a source, never break the screen.
  */
 public final class CursorTexture {
 
-    /** Default resource-pack path, also used for the file inside the jar. */
     public static final String DEFAULT_TEXTURE = "replayui:textures/gui/recorded_cursor.png";
 
-    /** Classpath location of the shipped PNG. */
     private static final String BUILT_IN_RESOURCE =
             "/assets/replayui/textures/gui/recorded_cursor.png";
 
-    /** Refuse absurdly large images; a pointer is a few dozen pixels. */
     public static final int MAX_SIZE = 128;
-
-    /** Two seconds. Resource reloads and file swaps show up quickly enough. */
     public static final long TTL_NANOS = 2_000_000_000L;
 
-    private static final String CONFIG_DIR = "config" + File.separator + "replayui";
-    private static final File EXTERNAL_PNG = new File(CONFIG_DIR, "cursor.png");
-    private static final File CONFIG_FILE = new File(CONFIG_DIR, "cursor.properties");
+    private static volatile File configDir =
+            new File("config" + File.separator + "replayui");
+    private static volatile DoubleSupplier guiScaleSupplier = CursorTexture::probeGuiScale;
+    private static volatile boolean packOverride;
 
     private static final int TRANSPARENT = 0;
     private static final int OUTLINE = 0xFF000000;
@@ -71,7 +61,6 @@ public final class CursorTexture {
         public final int width;
         public final int height;
         public final int[] argb;
-        /** Pixels to shift the picture so its hotspot lands on the cursor. */
         public final int offsetX;
         public final int offsetY;
 
@@ -84,26 +73,49 @@ public final class CursorTexture {
         }
     }
 
-    /** Text settings, read fresh on every reload. */
-    private static final class Settings {
-        String texture = ReplayUIConfig.cursorTexture;
-        boolean outline = ReplayUIConfig.cursorOutline;
-        int hotspotX = ReplayUIConfig.cursorHotspotX;
-        int hotspotY = ReplayUIConfig.cursorHotspotY;
-        boolean hotspotXSet;
-        boolean hotspotYSet;
+    /** Text settings, read fresh on every reload. Public for tests. */
+    public static final class Settings {
+        public String texture = ReplayUIConfig.cursorTexture;
+        public boolean outline = ReplayUIConfig.cursorOutline;
+        public int hotspotX = ReplayUIConfig.cursorHotspotX;
+        public int hotspotY = ReplayUIConfig.cursorHotspotY;
+        public double scale = ReplayUIConfig.cursorScale;
+        public boolean followStyle = ReplayUIConfig.followSystemCursorStyle;
+        public boolean followSize = ReplayUIConfig.followSystemCursorSize;
+        public int maxHeight = ReplayUIConfig.cursorMaxHeight;
+        public boolean hotspotXSet;
+        public boolean hotspotYSet;
     }
 
     private static boolean loaded;
     private static long loadedAt;
     private static Sprite cached;
     private static String cachedSource = "built-in bitmap";
+    private static String cachedTag = "bitmap";
+    private static boolean styleFollowActive;
+    private static boolean userSpritePresent;
+    private static int effectiveMaxHeight;
     private static Settings settings = new Settings();
 
     private CursorTexture() {
     }
 
-    /** Current sprite, or {@code null} when every source failed (use bitmap). */
+    /** Test / integration hooks; none of them change shipped behaviour. */
+    public static void setConfigDir(File dir) {
+        configDir = dir;
+        invalidate();
+    }
+
+    public static void setGuiScaleSupplier(DoubleSupplier supplier) {
+        guiScaleSupplier = supplier == null ? CursorTexture::probeGuiScale : supplier;
+        invalidate();
+    }
+
+    public static void setPackOverride(boolean value) {
+        packOverride = value;
+        invalidate();
+    }
+
     public static Sprite get() {
         ensureLoaded();
         return cached;
@@ -114,15 +126,128 @@ public final class CursorTexture {
         return cachedSource;
     }
 
+    public static String sourceTag() {
+        ensureLoaded();
+        return cachedTag;
+    }
+
     public static Settings config() {
         ensureLoaded();
         return settings;
     }
 
-    /** Force a reload on the next draw, e.g. after a resource reload. */
+    /** True only when the option is enabled AND no player picture overrides it. */
+    public static boolean styleFollowActive() {
+        ensureLoaded();
+        return styleFollowActive;
+    }
+
+    public static boolean userSpritePresent() {
+        ensureLoaded();
+        return userSpritePresent;
+    }
+
+    public static int effectiveMaxHeight() {
+        ensureLoaded();
+        return effectiveMaxHeight;
+    }
+
     public static void invalidate() {
         loaded = false;
         cached = null;
+        SystemCursorReader.invalidate();
+    }
+
+    /** Everything a resolved picture needs, shared by the live path and preview. */
+    public static final class Resolved {
+        public final Sprite sprite;
+        public final String source;
+        public final String tag;
+        public final boolean styleFollowActive;
+        public final boolean userSpritePresent;
+        public final int effectiveMaxHeight;
+
+        Resolved(Sprite sprite, String source, String tag, boolean styleFollowActive,
+                 boolean userSpritePresent, int effectiveMaxHeight) {
+            this.sprite = sprite;
+            this.source = source;
+            this.tag = tag;
+            this.styleFollowActive = styleFollowActive;
+            this.userSpritePresent = userSpritePresent;
+            this.effectiveMaxHeight = effectiveMaxHeight;
+        }
+    }
+
+    /**
+     * The config screen's static preview. Source selection and sizing are the
+     * exact same code path as {@link #get()}, with the four draft values
+     * substituted, so what the panel shows is what Done will actually draw.
+     *
+     * <p>Pure query: it does not touch the live cache, the runtime switches or
+     * the config file. Cancel therefore cannot change anything.
+     */
+    public static Resolved preview(double scale, int maxHeight,
+                                   boolean followStyle, boolean followSize) {
+        Settings s = copy(readSettings());
+        s.scale = clamp(scale, 0.25, 4.0);
+        s.maxHeight = (int) Math.round(clamp(maxHeight, 8, 128));
+        s.followStyle = followStyle;
+        s.followSize = followSize;
+        return resolve(s);
+    }
+
+    /** No writes to static state: both get() and preview() call this. */
+    private static Resolved resolve(Settings s) {
+        boolean userSprite = playerSpritePresent(s);
+        boolean styleActive = s.followStyle && !userSprite;
+        Sprite sprite = null;
+        String source = "built-in bitmap";
+        String tag = "bitmap";
+        File external = new File(configDir, "cursor.png");
+
+        if (external.isFile()) {
+            sprite = decode(openFile(external), s);
+            if (sprite != null) {
+                source = external.getAbsolutePath();
+                tag = "player-file";
+            }
+        }
+        if (sprite == null && styleActive) {
+            SystemCursorReader.Metrics m = SystemCursorReader.read();
+            if (m.hasSprite()) {
+                sprite = new Sprite(m.width, m.height, m.argb.clone(),
+                        m.hotspotX, m.hotspotY);
+                source = "system cursor (" + m.source + ")";
+                tag = "system";
+            }
+        }
+        if (sprite == null) {
+            sprite = loadFromPacks(s);
+            if (sprite != null) {
+                source = s.texture + " (resource packs)";
+                tag = DEFAULT_TEXTURE.equals(s.texture) ? "pack" : "player-texture";
+            }
+        }
+        if (sprite == null) {
+            Settings jar = s;
+            if (!s.hotspotXSet || !s.hotspotYSet) {
+                jar = copy(s);
+                jar.hotspotX = s.hotspotXSet ? s.hotspotX : 1;
+                jar.hotspotY = s.hotspotYSet ? s.hotspotY : 1;
+            }
+            sprite = decode(builtInStream(), jar);
+            if (sprite != null) {
+                source = DEFAULT_TEXTURE + " (mod jar)";
+                tag = "jar";
+            }
+        }
+        int maxH = (int) Math.round(clamp(s.maxHeight, 8, 128));
+        if (sprite != null) {
+            Sized sized = applySize(sprite, s);
+            sprite = sized.sprite;
+            maxH = sized.maxHeight;
+        }
+        return new Resolved(sprite, source, tag, styleActive, userSprite, maxH);
     }
 
     private static synchronized void ensureLoaded() {
@@ -131,58 +256,65 @@ public final class CursorTexture {
             return;
         }
         settings = readSettings();
-        Sprite sprite = null;
-        String source = "built-in bitmap";
+        detectPackOverride(settings);
+        Resolved r = resolve(settings);
 
-        if (EXTERNAL_PNG.isFile()) {
-            sprite = decode(openFile(EXTERNAL_PNG), settings);
-            if (sprite != null) {
-                source = EXTERNAL_PNG.getAbsolutePath();
-            }
-        }
-        if (sprite == null) {
-            sprite = loadFromPacks(settings);
-            if (sprite != null) {
-                source = settings.texture + " (resource packs)";
-            }
-        }
-        if (sprite == null) {
-            // The jar's PNG has its 1px outline baked in, so its tip sits at
-            // (1,1). Only that picture needs the shift. A player's own PNG
-            // (file or resource pack) keeps the configured hotspot, default
-            // (0,0), and is drawn exactly as authored.
-            Settings jar = settings;
-            if (!settings.hotspotXSet || !settings.hotspotYSet) {
-                jar = new Settings();
-                jar.texture = settings.texture;
-                jar.outline = settings.outline;
-                jar.hotspotX = settings.hotspotXSet ? settings.hotspotX : 1;
-                jar.hotspotY = settings.hotspotYSet ? settings.hotspotY : 1;
-                jar.hotspotXSet = settings.hotspotXSet;
-                jar.hotspotYSet = settings.hotspotYSet;
-            }
-            sprite = decode(builtInStream(), jar);
-            if (sprite != null) {
-                source = settings.texture + " (mod jar)";
-            }
-        }
-
-        cached = sprite;
-        cachedSource = source;
+        cached = r.sprite;
+        cachedSource = r.source;
+        cachedTag = r.tag;
+        styleFollowActive = r.styleFollowActive;
+        userSpritePresent = r.userSpritePresent;
+        effectiveMaxHeight = r.effectiveMaxHeight;
         loadedAt = now;
         loaded = true;
+
         if (isDebug()) {
-            System.out.println("[replayui] cursor sprite: " + source
-                    + (sprite == null ? " - falling back to built-in bitmap"
-                            : " " + sprite.width + "x" + sprite.height));
+            System.out.println("[replayui] cursor sprite: " + r.source
+                    + (r.sprite == null ? " - falling back to built-in bitmap"
+                            : " " + r.sprite.width + "x" + r.sprite.height)
+                    + " (tag=" + r.tag + ", max=" + effectiveMaxHeight
+                    + ", guiScale=" + String.format("%.1f", safeGuiScale()) + ")");
+            if (!r.styleFollowActive && settings.followStyle) {
+                System.out.println("[replayui] cursor style follow: inactive -"
+                        + " overridden by player picture; option stays true"
+                        + " (remove it to restore)");
+            } else if (r.styleFollowActive) {
+                System.out.println("[replayui] cursor style follow: active");
+            }
         }
+    }
+
+    private static Settings copy(Settings s) {
+        Settings n = new Settings();
+        n.texture = s.texture;
+        n.outline = s.outline;
+        n.hotspotX = s.hotspotX;
+        n.hotspotY = s.hotspotY;
+        n.scale = s.scale;
+        n.followStyle = s.followStyle;
+        n.followSize = s.followSize;
+        n.maxHeight = s.maxHeight;
+        n.hotspotXSet = s.hotspotXSet;
+        n.hotspotYSet = s.hotspotYSet;
+        return n;
+    }
+
+    private static boolean playerSpritePresent(Settings s) {
+        if (new File(configDir, "cursor.png").isFile()) {
+            return true;
+        }
+        if (!DEFAULT_TEXTURE.equals(s.texture)) {
+            return true;
+        }
+        return packOverride;
     }
 
     private static Settings readSettings() {
         Settings s = new Settings();
         Properties p = new Properties();
-        if (CONFIG_FILE.isFile()) {
-            try (InputStream in = new FileInputStream(CONFIG_FILE)) {
+        File file = new File(configDir, "cursor.properties");
+        if (file.isFile()) {
+            try (InputStream in = new FileInputStream(file)) {
                 p.load(in);
             } catch (IOException | RuntimeException ignored) {
                 // A malformed config must not stop the pointer from drawing.
@@ -200,6 +332,23 @@ public final class CursorTexture {
         s.hotspotYSet = p.getProperty("hotspotY") != null;
         s.hotspotX = readInt(p, "hotspotX", s.hotspotX);
         s.hotspotY = readInt(p, "hotspotY", s.hotspotY);
+        s.scale = readDouble(p, "scale", s.scale, 0.25, 4.0);
+        s.maxHeight = (int) Math.round(readDouble(p, "maxHeight", s.maxHeight, 8, 128));
+        String fs = p.getProperty("followSystemCursorStyle");
+        if (fs != null) {
+            s.followStyle = Boolean.parseBoolean(fs.trim());
+        }
+        String fz = p.getProperty("followSystemCursorSize");
+        if (fz != null) {
+            s.followSize = Boolean.parseBoolean(fz.trim());
+        }
+        // Backwards-friendly alias: one switch for both, when present.
+        String legacy = p.getProperty("useSystemCursor");
+        if (legacy != null) {
+            boolean both = Boolean.parseBoolean(legacy.trim());
+            s.followStyle = both;
+            s.followSize = both;
+        }
         return s;
     }
 
@@ -215,6 +364,82 @@ public final class CursorTexture {
         }
     }
 
+    private static double readDouble(Properties p, String key, double fallback,
+                                     double lo, double hi) {
+        String v = p.getProperty(key);
+        if (v == null) {
+            return fallback;
+        }
+        try {
+            double d = Double.parseDouble(v.trim());
+            return d >= lo && d <= hi ? d : fallback;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private static double safeGuiScale() {
+        try {
+            double d = guiScaleSupplier.getAsDouble();
+            return d >= 1.0 && d <= 8.0 ? d : 2.0;
+        } catch (Throwable ignored) {
+            return 2.0;
+        }
+    }
+
+    private static double probeGuiScale() {
+        try {
+            Class<?> mcClass = Class.forName("net.minecraft.client.Minecraft");
+            Object mc = mcClass.getMethod("getInstance").invoke(null);
+            Object window = mcClass.getMethod("getWindow").invoke(mc);
+            Object scale = window.getClass().getMethod("getGuiScale").invoke(window);
+            return ((Number) scale).doubleValue();
+        } catch (Throwable ignored) {
+            return 2.0;
+        }
+    }
+
+    /** Is the default path being supplied by a pack other than this mod's jar? */
+    private static void detectPackOverride(Settings s) {
+        if (!DEFAULT_TEXTURE.equals(s.texture)) {
+            return;
+        }
+        try {
+            Class<?> mcClass = Class.forName("net.minecraft.client.Minecraft");
+            Object mc = mcClass.getMethod("getInstance").invoke(null);
+            Object manager = mcClass.getMethod("getResourceManager").invoke(mc);
+            Class<?> rl = Class.forName("net.minecraft.resources.ResourceLocation");
+            Object location = rl.getMethod("parse", String.class).invoke(null, s.texture);
+            Object optional = manager.getClass().getMethod("getResource", rl)
+                    .invoke(manager, location);
+            if (!(optional instanceof Optional)) {
+                return;
+            }
+            Optional<?> res = (Optional<?>) optional;
+            if (!res.isPresent()) {
+                return;
+            }
+            Object resource = res.get();
+            String packId = null;
+            for (String name : new String[]{"sourcePackId", "packId"}) {
+                try {
+                    Object v = resource.getClass().getMethod(name).invoke(resource);
+                    if (v != null) {
+                        packId = v.toString();
+                        break;
+                    }
+                } catch (Throwable ignored) {
+                    // Different mapping name; try the next one.
+                }
+            }
+            if (packId != null && !packId.toLowerCase().contains("replayui")) {
+                packOverride = true;
+            }
+        } catch (Throwable ignored) {
+            // No Minecraft in tests, or a changed mapping: keep the old flag.
+        }
+    }
+
     private static InputStream openFile(File file) {
         try {
             return new FileInputStream(file);
@@ -227,24 +452,22 @@ public final class CursorTexture {
         return CursorTexture.class.getResourceAsStream(BUILT_IN_RESOURCE);
     }
 
-    /**
-     * Resource packs resolve by priority inside the manager, so asking it to
-     * open the location is enough - no pack enumeration, no texture binding.
-     * Every failure is swallowed: a wrong mapping name or an absent client
-     * must degrade to the jar's own PNG, never break the screen.
-     */
+    /** Reflective so 1.21.1 mapping differences can only lose one source. */
     private static Sprite loadFromPacks(Settings s) {
         try {
-            Minecraft mc = Minecraft.getInstance();
+            Class<?> mcClass = Class.forName("net.minecraft.client.Minecraft");
+            Object mc = mcClass.getMethod("getInstance").invoke(null);
             if (mc == null) {
                 return null;
             }
-            ResourceManager manager = mc.getResourceManager();
+            Object manager = mcClass.getMethod("getResourceManager").invoke(mc);
             if (manager == null) {
                 return null;
             }
-            ResourceLocation location = ResourceLocation.parse(s.texture);
-            InputStream in = manager.open(location);
+            Class<?> rl = Class.forName("net.minecraft.resources.ResourceLocation");
+            Object location = rl.getMethod("parse", String.class).invoke(null, s.texture);
+            InputStream in = (InputStream) manager.getClass().getMethod("open", rl)
+                    .invoke(manager, location);
             if (in == null) {
                 return null;
             }
@@ -259,19 +482,72 @@ public final class CursorTexture {
         }
     }
 
+    /** Compressed-size cap, enforced before any image is decoded. */
+    private static final int MAX_FILE_BYTES = 512 * 1024;
+    private static final long MAX_PIXELS = (long) MAX_SIZE * MAX_SIZE;
+
+    private static byte[] readBounded(InputStream in) throws IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[4096];
+        int total = 0, n;
+        while ((n = in.read(buf)) >= 0) {
+            total += n;
+            if (total > MAX_FILE_BYTES) {
+                return null;
+            }
+            out.write(buf, 0, n);
+        }
+        return out.toByteArray();
+    }
+
+    /** {width,height} from a PNG IHDR, or null when this is not a PNG. */
+    private static int[] pngDimensions(byte[] b) {
+        if (b.length < 24
+                || (b[0] & 0xFF) != 0x89 || b[1] != 'P' || b[2] != 'N' || b[3] != 'G'
+                || (b[4] & 0xFF) != 0x0D || (b[5] & 0xFF) != 0x0A
+                || (b[6] & 0xFF) != 0x1A || (b[7] & 0xFF) != 0x0A
+                || b[12] != 'I' || b[13] != 'H' || b[14] != 'D' || b[15] != 'R') {
+            return null;
+        }
+        return new int[]{readInt(b, 16), readInt(b, 20)};
+    }
+
+    private static int readInt(byte[] b, int o) {
+        return ((b[o] & 0xFF) << 24) | ((b[o + 1] & 0xFF) << 16)
+                | ((b[o + 2] & 0xFF) << 8) | (b[o + 3] & 0xFF);
+    }
+
     /** Decode a PNG into a row-major ARGB array, then optionally add a border. */
     static Sprite decode(InputStream in, Settings s) {
         if (in == null) {
             return null;
         }
         try {
-            BufferedImage image = ImageIO.read(in);
+            // Bound the raw bytes AND inspect the IHDR before ImageIO allocates
+            // a BufferedImage. A player dropping an 8000x8000 PNG must not cost
+            // hundreds of MB just to be rejected afterwards.
+            byte[] bytes = readBounded(in);
+            if (bytes == null) {
+                debug("cursor PNG rejected: file larger than " + MAX_FILE_BYTES
+                        + " bytes");
+                return null;
+            }
+            int[] dims = pngDimensions(bytes);
+            if (dims != null && (dims[0] < 1 || dims[1] < 1
+                    || dims[0] > MAX_SIZE || dims[1] > MAX_SIZE
+                    || (long) dims[0] * dims[1] > MAX_PIXELS)) {
+                debug("cursor PNG rejected before decode: " + dims[0] + "x"
+                        + dims[1] + " (max " + MAX_SIZE + "x" + MAX_SIZE + ")");
+                return null;
+            }
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(bytes));
             if (image == null) {
                 return null;
             }
             int w = image.getWidth();
             int h = image.getHeight();
-            if (w < 1 || h < 1 || w > MAX_SIZE || h > MAX_SIZE) {
+            if (w < 1 || h < 1 || w > MAX_SIZE || h > MAX_SIZE
+                    || (long) w * h > MAX_PIXELS) {
                 debug("cursor PNG rejected: " + w + "x" + h
                         + " (max " + MAX_SIZE + "x" + MAX_SIZE + ")");
                 return null;
@@ -280,14 +556,12 @@ public final class CursorTexture {
             for (int y = 0; y < h; y++) {
                 for (int x = 0; x < w; x++) {
                     int argb = image.getRGB(x, y);
-                    // Very faint pixels only cost fill calls and look like dirt.
                     pixels[y * w + x] = (argb >>> 24) < 16 ? TRANSPARENT : argb;
                 }
             }
-            if (!s.outline) {
-                return new Sprite(w, h, pixels, s.hotspotX, s.hotspotY);
-            }
-            return outline(pixels, w, h, s);
+            return s.outline
+                    ? outline(pixels, w, h, s)
+                    : new Sprite(w, h, pixels, s.hotspotX, s.hotspotY);
         } catch (Throwable t) {
             debug("cursor PNG decode failed: " + t);
             return null;
@@ -300,12 +574,6 @@ public final class CursorTexture {
         }
     }
 
-    /**
-     * Grow the picture by one pixel on each side and paint a black border into
-     * the emptiness around every visible pixel. The original picture is then
-     * laid on top, so its own colours are never overwritten. The hotspot
-     * therefore moves to (1, 1) inside the grown canvas.
-     */
     private static Sprite outline(int[] src, int w, int h, Settings s) {
         int ow = w + 2;
         int oh = h + 2;
@@ -336,6 +604,67 @@ public final class CursorTexture {
             }
         }
         return new Sprite(ow, oh, out, 1 + s.hotspotX, 1 + s.hotspotY);
+    }
+
+    /**
+     * One place for all sizing. Desktop pixels become GUI pixels by dividing
+     * by guiScale, so a 32px desktop pointer at guiScale 2 is 16 GUI pixels -
+     * exactly the shipped arrow, not twice its size. A large system cursor
+     * raises the height ceiling instead of being clamped away.
+     */
+    /** Sizing result; the ceiling is returned rather than written to a field. */
+    private static final class Sized {
+        final Sprite sprite;
+        final int maxHeight;
+
+        Sized(Sprite sprite, int maxHeight) {
+            this.sprite = sprite;
+            this.maxHeight = maxHeight;
+        }
+    }
+
+    private static Sized applySize(Sprite base, Settings s) {
+        double guiScale = safeGuiScale();
+        double scale = clamp(s.scale, 0.25, 4.0);
+        double maxH = clamp(s.maxHeight, 8, 128);
+        if (s.followSize) {
+            SystemCursorReader.Metrics m = SystemCursorReader.read();
+            if (m.ok) {
+                double target = m.cursorPx / guiScale;
+                double ratio = clamp(target / base.height, 0.25, 4.0);
+                scale = clamp(scale * ratio, 0.25, 4.0);
+                maxH = Math.max(maxH, Math.min(128, Math.round(target)));
+            }
+        }
+        Sprite out = scale(base, scale);
+        if (out.height > maxH) {
+            out = scale(out, maxH / out.height);
+        }
+        return new Sized(out, (int) Math.round(maxH));
+    }
+
+    private static double clamp(double v, double lo, double hi) {
+        return v < lo ? lo : (v > hi ? hi : v);
+    }
+
+    /** Nearest-neighbour rescale; hard edges and a 1px outline stay crisp. */
+    public static Sprite scale(Sprite src, double factor) {
+        if (factor == 1.0) {
+            return src;
+        }
+        int nw = Math.max(1, (int) Math.round(src.width * factor));
+        int nh = Math.max(1, (int) Math.round(src.height * factor));
+        int[] out = new int[nw * nh];
+        for (int y = 0; y < nh; y++) {
+            int sy = Math.min(src.height - 1, (int) (y * src.height / (double) nh));
+            for (int x = 0; x < nw; x++) {
+                int sx = Math.min(src.width - 1, (int) (x * src.width / (double) nw));
+                out[y * nw + x] = src.argb[sy * src.width + sx];
+            }
+        }
+        return new Sprite(nw, nh, out,
+                (int) Math.round(src.offsetX * factor),
+                (int) Math.round(src.offsetY * factor));
     }
 
     private static boolean isDebug() {

@@ -169,6 +169,11 @@ public final class ContainerScreenBuilder {
         // need is the entity the menu belongs to.
         SpecialScreens.attachHorse(client, screen, data);
 
+        // Format 6: trade lists, anvil rename text and enchantment clues are
+        // menu-side fields, not slots. Inject them after fillMenu so the screen
+        // reads the recorded values on its very first frame.
+        MenuExtrasApplier.apply(client, screen, menu, data);
+
         return screen;
     }
 
@@ -245,7 +250,13 @@ public final class ContainerScreenBuilder {
             return false;
         }
 
-        return fillMenu(menu, data.items(), data.carried(), data.dataSlots());
+        boolean filled = fillMenu(menu, data.items(), data.carried(), data.dataSlots());
+        if (filled) {
+            // A trade list or rename box can change mid-recording, so the
+            // extras are re-applied on every content refresh too.
+            MenuExtrasApplier.apply(null, screen, menu, data);
+        }
+        return filled;
     }
 
     /**
