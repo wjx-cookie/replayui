@@ -132,7 +132,18 @@ public final class UiSampler {
             }
         }
         if (kind != UiStateData.EVENT_NONE) {
-            data = withEvent(data, kind);
+            // The tick sample is the one that survives playback: a later
+            // payload overwrites the sub-tick sample in PlaybackState. So the
+            // exact press / release coordinates must be carried onto it.
+            // Using the mouse position at the END of the tick is what made a
+            // placed item land half a slot away from the cursor.
+            UiStateData prev = lastWritten;
+            if (prev != null && (prev.eventKind() == UiStateData.EVENT_CLICK
+                    || prev.eventKind() == UiStateData.EVENT_RELEASE)) {
+                data = withEventAt(data, kind, prev.mouseX(), prev.mouseY());
+            } else {
+                data = withEvent(data, kind);
+            }
         }
 
         // State model: skip the write when nothing changed. Keeps files small
@@ -158,9 +169,15 @@ public final class UiSampler {
 
     /** Rebuild a sample with a new event marker, leaving every other field alone. */
     static UiStateData withEvent(UiStateData data, int kind) {
+        return withEventAt(data, kind, data.mouseX(), data.mouseY());
+    }
+
+    /** Same, but with the coordinates of the press / release that caused it. */
+    static UiStateData withEventAt(UiStateData data, int kind,
+                                   double mouseX, double mouseY) {
         return new UiStateData(data.ownerUuid(), data.open(), data.menuTypeId(),
                 data.title(), data.items(), data.carried(), data.containerId(),
-                data.mouseX(), data.mouseY(), data.blockPos(), data.dataSlots(),
+                mouseX, mouseY, data.blockPos(), data.dataSlots(),
                 data.windowWidth(), data.windowHeight(), data.extras(), kind);
     }
 
@@ -180,6 +197,15 @@ public final class UiSampler {
      * replay, and a screen that is not a container is ignored.
      */
     public static void recordClickEvent(Minecraft client, int button) {
+        recordPointerEvent(client, button, UiStateData.EVENT_CLICK);
+    }
+
+    /** The drop that ends a drag / places an item has its own exact position. */
+    public static void recordReleaseEvent(Minecraft client, int button) {
+        recordPointerEvent(client, button, UiStateData.EVENT_RELEASE);
+    }
+
+    private static void recordPointerEvent(Minecraft client, int button, int kind) {
         if (!ReplayUIConfig.enabled || !ReplayUIConfig.captureMouse
                 || !ReplayUIConfig.pinOnInteraction) {
             return;
@@ -194,13 +220,14 @@ public final class UiSampler {
                 return;
             }
             UiStateData data = UiStateReader.capture(client, client.player.getUUID());
-            data = withEvent(data, UiStateData.EVENT_CLICK);
+            data = withEvent(data, kind);
             lastWritten = data;
             RecorderBridge.writeDelta(data);
-            DebugLog.verbose("click event sample x=" + data.mouseX() + " y=" + data.mouseY());
+            DebugLog.verbose("pointer event sample kind=" + kind
+                    + " x=" + data.mouseX() + " y=" + data.mouseY());
         } catch (Throwable t) {
             // A probe failing here must never break a real click.
-            DebugLog.verbose("click event sample skipped: " + t);
+            DebugLog.verbose("pointer event sample skipped: " + t);
         }
     }
 

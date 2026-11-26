@@ -75,8 +75,11 @@ public final class SpecialScreenReader {
         int menuTypeId;
         int containerId = 0;
 
-        if (kind == HORSE && screen instanceof AbstractContainerScreen) {
-            AbstractContainerScreen<?> cs = (AbstractContainerScreen<?>) screen;
+        // CreativeModeInventoryScreen IS an AbstractContainerScreen. Its menu
+        // slots used to be skipped entirely, which left the replayed screen
+        // showing the viewer's own items rather than the recorded ones.
+        if ((kind == HORSE || kind == CREATIVE)
+                && screen instanceof AbstractContainerScreen<?> cs) {
             AbstractContainerMenu menu = cs.getMenu();
             if (menu != null) {
                 containerId = menu.containerId;
@@ -84,18 +87,25 @@ public final class SpecialScreenReader {
                     items.add(slot.getItem().copy());
                 }
                 carried = menu.getCarried().copy();
-                try {
-                    MenuType<?> mt = ((MenuTypeAccessor) menu).replayui$getMenuType();
-                    menuTypeId = mt != null
-                            ? BuiltInRegistries.MENU.getId(mt)
-                            : UiStateData.NO_MENU_TYPE;
-                } catch (Throwable t) {
-                    menuTypeId = UiStateData.NO_MENU_TYPE;
+                if (kind == HORSE) {
+                    try {
+                        MenuType<?> mt = ((MenuTypeAccessor) menu).replayui$getMenuType();
+                        menuTypeId = mt != null
+                                ? BuiltInRegistries.MENU.getId(mt)
+                                : UiStateData.NO_MENU_TYPE;
+                    } catch (Throwable t) {
+                        menuTypeId = UiStateData.NO_MENU_TYPE;
+                    }
+                    RecordedDataSlots.bind(containerId);
+                    dataSlots = RecordedDataSlots.snapshot();
+                } else {
+                    menuTypeId = UiStateData.CREATIVE_INVENTORY;
+                    RecordedDataSlots.bind(-1);
                 }
-                RecordedDataSlots.bind(containerId);
-                dataSlots = RecordedDataSlots.snapshot();
             } else {
-                menuTypeId = UiStateData.NO_MENU_TYPE;
+                menuTypeId = kind == CREATIVE
+                        ? UiStateData.CREATIVE_INVENTORY
+                        : UiStateData.NO_MENU_TYPE;
                 RecordedDataSlots.bind(-1);
             }
         } else {

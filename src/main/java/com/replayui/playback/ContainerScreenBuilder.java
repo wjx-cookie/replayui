@@ -10,6 +10,7 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
@@ -36,6 +37,17 @@ import java.util.List;
 public final class ContainerScreenBuilder {
 
     private ContainerScreenBuilder() {
+    }
+
+    /** Old samples simply have no such slot; textAt() returns "". */
+    private static String menuKeyOf(UiStateData data) {
+        try {
+            if (data.extras() == null || data.extras().extended() == null) { return ""; }
+            return data.extras().extended().textAt(
+                    com.replayui.util.NonContainerDetail.T_MENU_KEY);
+        } catch (Throwable ignored) {
+            return "";
+        }
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -77,7 +89,26 @@ public final class ContainerScreenBuilder {
             return buildPlayerInventory(player, data);
         }
 
-        MenuType menuType = BuiltInRegistries.MENU.byId(data.menuTypeId());
+        // Prefer the recorded registry KEY. The numeric id shifts whenever the
+        // set of installed modded menus changes, so a recording made with A+B
+        // would open the wrong screen (or none) on a machine with only A.
+        // Old samples have no key and go straight to byId - unchanged.
+        MenuType menuType = null;
+        String menuKey = menuKeyOf(data);
+        if (!menuKey.isEmpty()) {
+            try {
+                int colon = menuKey.indexOf(':');
+                ResourceLocation rl = colon > 0
+                        ? ResourceLocation.fromNamespaceAndPath(
+                                menuKey.substring(0, colon), menuKey.substring(colon + 1))
+                        : ResourceLocation.fromNamespaceAndPath("minecraft", menuKey);
+                menuType = BuiltInRegistries.MENU.get(rl);
+            } catch (Throwable ignored) {
+            }
+        }
+        if (menuType == null) {
+            menuType = BuiltInRegistries.MENU.byId(data.menuTypeId());
+        }
         if (menuType == null) {
             // Typical cause: the replay was made with a mod container that is
             // not installed here. Skip rather than guess.
@@ -273,7 +304,7 @@ public final class ContainerScreenBuilder {
      * half is the viewer's real Inventory. InventorySnapshot in PlaybackTicker
      * is what makes that safe to do.
      */
-    static boolean fillMenu(AbstractContainerMenu menu, List<ItemStack> items,
+    public static boolean fillMenu(AbstractContainerMenu menu, List<ItemStack> items,
                                     ItemStack carried, int[] dataSlots) {
         // Try the vanilla entry point first, then CHECK that it actually wrote.
         //

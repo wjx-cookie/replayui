@@ -71,6 +71,8 @@ public record UiStateData(
     public static final int EVENT_PICKUP = 2;
     /** A tick where the carried stack went from non-empty to empty. */
     public static final int EVENT_PLACE = 3;
+    /** Extra sample captured in the mouse-release handler, at the exact drop position. */
+    public static final int EVENT_RELEASE = 4;
 
     /**
      * Marker for the player's own inventory (the screen you get by pressing E).
@@ -105,6 +107,8 @@ public record UiStateData(
     public static final int COMMAND_BLOCK_SCREEN = -8;
     /** Structure block edit screen. */
     public static final int STRUCTURE_BLOCK_SCREEN = -9;
+    /** F3+F4 game-mode switcher (a pure client overlay, no menu at all). */
+    public static final int GAMEMODE_SWITCHER_SCREEN = -10;
 
     /** Horse/llama inventories keep their real registry id and only carry an
      *  entity reference in {@link ScreenExtras}. */
@@ -121,7 +125,7 @@ public record UiStateData(
     /** Screens that cannot be rebuilt through the MenuType registry. */
     public boolean isSpecialScreen() {
         return menuTypeId <= CREATIVE_INVENTORY
-                && menuTypeId >= STRUCTURE_BLOCK_SCREEN;
+                && menuTypeId >= GAMEMODE_SWITCHER_SCREEN;
     }
 
     public boolean hasMenuType() {

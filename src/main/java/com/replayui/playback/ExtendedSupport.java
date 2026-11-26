@@ -48,10 +48,6 @@ public final class ExtendedSupport {
     private static final String[] BOOK_ACCESS = {
             "net.minecraft.client.gui.screens.inventory.BookViewScreen$BookAccess"};
 
-    /** Viewer's own saved-hotbar groups, restored on teardown. */
-    private static Object presetTarget;
-    private static List<List<ItemStack>> presetBackup;
-
     private static boolean beaconReported = false;
     private static boolean ncReported = false;
 
@@ -95,13 +91,26 @@ public final class ExtendedSupport {
         if (menu != null && classNameContains(menu, "BeaconMenu")) {
             applyBeacon(menu, ex);
         }
+        // Saved-hotbar presets are deliberately NOT written back.
+        //
+        // Flashback already replays the recorded player's hotbar contents and
+        // selected slot natively. Writing the recorded preset groups into a
+        // List found on the VIEWER's own inventory overrides that native state
+        // with the viewer's local data (and on some mappings lands on the
+        // inventory item list itself), which is exactly the "hotbar used to be
+        // correct, now it is not" regression from the first real-game test.
+        // The wire fields stay in ExtendedState for v6 compatibility.
         if (!ex.hotbarGroups().isEmpty()) {
-            applyHotbarPresets(client, screen, ex.hotbarGroups());
+            DebugLog.verbose("hotbar presets: left to Flashback's native replay ("
+                    + ex.hotbarGroups().size() + " groups recorded)");
         }
         // Recipe book state and the recorded creative item list live on the
         // Screen, not the Menu. Best effort, one verbose line at most.
         if (screen != null) {
             com.replayui.util.ScreenDetail.apply(screen, ex);
+            // Shape-based widget text. Old samples report "" -> no-op.
+            com.replayui.util.WidgetState.restore(screen,
+                    ex.textAt(NonContainerDetail.T_WIDGET_STATE));
         }
     }
 
@@ -179,62 +188,7 @@ public final class ExtendedSupport {
         return holder != null && ScreenReflect.set(menu, holder, names);
     }
 
-    /**
-     * Nested groups only. The outer list element MUST itself be a List; a flat
-     * list of ItemStacks is left untouched. The viewer's original groups are
-     * snapshotted and restored by {@link #release()}.
-     */
-    private static void applyHotbarPresets(Minecraft client, Screen screen,
-                                            List<List<ItemStack>> groups) {
-        if (client == null || groups == null || groups.isEmpty()) { return; }
-        Object target = findPresetList(client, screen);
-        if (target == null) {
-            DebugLog.verbose("hotbar presets: target list not found");
-            return;
-        }
-        @SuppressWarnings("unchecked")
-        List<Object> list = (List<Object>) target;
-        if (!list.isEmpty() && !(list.get(0) instanceof List)) {
-            DebugLog.verbose("hotbar presets: target is flat, refusing to corrupt viewer data");
-            return;
-        }
-        if (presetTarget != target) {
-            presetBackup = snapshotGroups(list);
-            presetTarget = target;
-        }
-        boolean ok = false;
-        for (int i = 0; i < list.size() && i < groups.size(); i++) {
-            List<ItemStack> copy = new ArrayList<ItemStack>();
-            for (ItemStack stack : groups.get(i)) {
-                copy.add(stack == null ? ItemStack.EMPTY : stack.copy());
-            }
-            try {
-                list.set(i, copy);
-                ok = true;
-            } catch (Throwable ignored) {
-            }
-        }
-        DebugLog.verbose("hotbar presets: nested groups applied=" + ok
-                + " count=" + groups.size());
-    }
 
-    private static Object findPresetList(Minecraft client, Screen screen) {
-        String[] names = {"hotbarPresets", "savedHotbars", "hotbarItems",
-                "hotbarSwapItems", "HOTBAR_SWAP_ITEMS"};
-        if (client != null && client.player != null) {
-            Object inv = ScreenReflect.call(client.player, "getInventory");
-            Object v = ScreenReflect.get(inv, names);
-            if (v instanceof List) { return v; }
-        }
-        if (screen != null) {
-            Object v = ScreenReflect.get(screen, names);
-            if (v instanceof List) { return v; }
-        }
-        Class<?> creative = ScreenReflect.find(
-                "net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen");
-        Object v = ScreenReflect.getStatic(creative, names);
-        return v instanceof List ? v : null;
-    }
 
     private static List<List<ItemStack>> snapshotGroups(List<Object> list) {
         List<List<ItemStack>> out = new ArrayList<List<ItemStack>>();
@@ -258,6 +212,12 @@ public final class ExtendedSupport {
         if (kind == 0) { return null; }
         ExtendedState ex = extended(data);
         if (ex == null) { return null; }
+        if (kind == 6) {
+            GameModeSwitcherReplayScreen s = new GameModeSwitcherReplayScreen();
+            applyGameModeSwitcher(s, data, ex);
+            DebugLog.verbose("game mode switcher rebuilt");
+            return s;
+        }
         Class<?> cls = classFor(kind);
         if (cls == null) {
             if (!ncReported) {
@@ -276,6 +236,8 @@ public final class ExtendedSupport {
             return null;
         }
         applyNonContainer((Screen) screen, kind, ex);
+        com.replayui.util.WidgetState.restore((Screen) screen,
+                ex.textAt(NonContainerDetail.T_WIDGET_STATE));
         if (!ncReported) {
             ncReported = true;
             DebugLog.verbose("non-container screen rebuilt kind=" + kind);
@@ -286,8 +248,47 @@ public final class ExtendedSupport {
     public static boolean refreshNonContainer(Screen screen, UiStateData data) {
         int kind = ExtendedReader.markerToKind(data.menuTypeId());
         if (kind == 0 || screen == null) { return false; }
-        applyNonContainer(screen, kind, extended(data));
+        if (kind == 6) {
+            applyGameModeSwitcher(screen, data, extended(data));
+            return true;
+        }
+        ExtendedState ex = extended(data);
+        applyNonContainer(screen, kind, ex);
+        if (ex != null) {
+            com.replayui.util.WidgetState.restore(screen,
+                    ex.textAt(NonContainerDetail.T_WIDGET_STATE));
+        }
         return true;
+    }
+
+    /**
+     * The selected index rides in dataSlots[0]; the four captions ride in the
+     * trailing rich list (first entry "sel:N", mirrored there so a change of
+     * selection is visible to PlaybackTicker.contentsChanged, which compares
+     * extras rather than dataSlots).
+     */
+    private static void applyGameModeSwitcher(Screen screen, UiStateData data,
+                                              ExtendedState ex) {
+        if (!(screen instanceof GameModeSwitcherReplayScreen)) { return; }
+        int selected = data != null && data.dataSlots().length > 0
+                ? data.dataSlots()[0] : 0;
+        List<Component> captions = new ArrayList<Component>();
+        if (ex != null) {
+            for (String raw : ex.richPages()) {
+                if (raw == null) { continue; }
+                if (raw.startsWith("sel:")) {
+                    if (data == null || data.dataSlots().length == 0) {
+                        try {
+                            selected = Integer.parseInt(raw.substring(4));
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                    continue;
+                }
+                if (!raw.isEmpty()) { captions.add(Component.literal(raw)); }
+            }
+        }
+        ((GameModeSwitcherReplayScreen) screen).setState(selected, captions);
     }
 
     /** Per-kind argument pool. Everything is soft; a missing piece just means
@@ -602,23 +603,6 @@ public final class ExtendedSupport {
     /** Called by SpecialScreens.release() on every teardown. */
     public static void release() {
         // No skin state to restore: Flashback owns the replay-world profiles.
-        if (presetTarget instanceof List && presetBackup != null) {
-            @SuppressWarnings("unchecked")
-            List<Object> list = (List<Object>) presetTarget;
-            try {
-                for (int i = 0; i < list.size() && i < presetBackup.size(); i++) {
-                    List<ItemStack> copy = new ArrayList<ItemStack>();
-                    for (ItemStack stack : presetBackup.get(i)) {
-                        copy.add(stack == null ? ItemStack.EMPTY : stack.copy());
-                    }
-                    list.set(i, copy);
-                }
-                DebugLog.verbose("hotbar presets restored to the viewer's own groups");
-            } catch (Throwable ignored) {
-            }
-        }
-        presetTarget = null;
-        presetBackup = null;
         com.replayui.util.ScreenDetail.releaseCreativeItems();
     }
 }

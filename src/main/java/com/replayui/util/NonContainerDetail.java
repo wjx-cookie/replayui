@@ -61,7 +61,12 @@ public final class NonContainerDetail {
     public static final int T_SIGN_WAXED = 25;      // "1"/"0"/"" waxed sign
     public static final int T_STRUCT_INCLUDE = 26;  // "1"/"0"/"" include entities
     public static final int T_CREATIVE_ITEMS = 27;  // displayed item ids, SEP-joined
-    public static final int TEXT_SLOTS = 28;
+    // Widget-level text (shape-based, no class names) and the stable registry
+    // key of the MenuType. Both are trailing slots: old samples report "" and
+    // every previously verified path keeps its exact old behaviour.
+    public static final int T_WIDGET_STATE = 28;
+    public static final int T_MENU_KEY = 29;
+    public static final int TEXT_SLOTS = 30;
 
     // number slots: 0..20 are owned by ExtendedReader
     public static final int N_BOOK_CURSOR = 21;

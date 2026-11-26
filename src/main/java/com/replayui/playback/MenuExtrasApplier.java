@@ -50,19 +50,28 @@ public final class MenuExtrasApplier {
     public static void apply(Minecraft client, Screen screen,
                              AbstractContainerMenu menu, UiStateData data) {
         ScreenExtras ex = data.extras();
-        if (ex == null || menu == null || screen == null) { return; }
-        if (ex.hasNoMenuExtras()) { return; }
+        if (ex == null || screen == null) { return; }
 
-        if (!ex.merchantOffers().isEmpty()) {
-            applyOffers(screen, menu, ex.merchantOffers());
+        // Menu-side extras (trades, rename, enchant clues) are the only part
+        // that hasNoMenuExtras() guards. Screen-side state - recipe book open
+        // state, creative item list, beacon effects - has to run on EVERY
+        // ordinary container, including a plain chest or inventory where all
+        // menu extras are empty. The old early return sat in front of the
+        // applyMenuState call below, so a player opening the recipe book in
+        // their inventory produced a sample with no menu extras and the
+        // recipe book was never restored at all.
+        if (menu != null && !ex.hasNoMenuExtras()) {
+            if (!ex.merchantOffers().isEmpty()) {
+                applyOffers(screen, menu, ex.merchantOffers());
+            }
+            if (!ex.renameText().isEmpty()) {
+                applyRename(screen, menu, ex.renameText());
+            }
+            if (ex.enchantClues().length > 0 || ex.enchantLevels().length > 0) {
+                applyEnchantClues(menu, ex);
+            }
+            applyScreenSide(screen, menu, ex);
         }
-        if (!ex.renameText().isEmpty()) {
-            applyRename(screen, menu, ex.renameText());
-        }
-        if (ex.enchantClues().length > 0 || ex.enchantLevels().length > 0) {
-            applyEnchantClues(menu, ex);
-        }
-        applyScreenSide(screen, menu, ex);
         ExtendedSupport.applyMenuState(client, screen, menu, data);
         if (!appliedOnce) {
             appliedOnce = true;

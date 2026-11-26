@@ -2,7 +2,6 @@ package com.replayui.playback;
 
 import com.replayui.codec.UiStateData;
 import com.replayui.log.DebugLog;
-import com.replayui.util.ScreenReflect;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 
@@ -33,15 +32,13 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
  */
 public final class RecordedXpLevel {
 
-    /** Same candidates as the recording-side reader, so write matches read. */
-    private static final String[] LEVEL_FIELD = {"experienceLevel", "f_36046_"};
+    /** A class-name substring, not a mapping name. */
     private static final String ENCHANT_HINT = "Enchant";
 
     private static boolean borrowed = false;
-    private static Object borrowedFrom = null;
+    private static net.minecraft.client.player.LocalPlayer borrowedFrom = null;
     private static int originalLevel = 0;
     private static int lastLogged = Integer.MIN_VALUE;
-    private static boolean reportedMissing = false;
 
     private RecordedXpLevel() {
     }
@@ -71,23 +68,17 @@ public final class RecordedXpLevel {
         }
 
         Minecraft client = Minecraft.getInstance();
-        Object player = client == null ? null : client.player;
+        net.minecraft.client.player.LocalPlayer player =
+                client == null ? null : client.player;
         if (player == null) {
             return;
         }
 
-        Object before = ScreenReflect.get(player, LEVEL_FIELD);
-        if (!(before instanceof Number)) {
-            if (!reportedMissing) {
-                reportedMissing = true;
-                DebugLog.verbose("enchant xp: level field not found - viewer level stays");
-            }
-            return;
-        }
-        int original = ((Number) before).intValue();
-        if (!ScreenReflect.set(player, Integer.valueOf(recorded), LEVEL_FIELD)) {
-            return;
-        }
+        // Compile-time field reference. A string name would be "f_XXXX" in a
+        // production launch and silently miss; this is remapped by Loom and
+        // checked by javac, so it cannot degrade to "no borrowing" quietly.
+        int original = player.experienceLevel;
+        player.experienceLevel = recorded;
 
         borrowed = true;
         borrowedFrom = player;
@@ -104,13 +95,11 @@ public final class RecordedXpLevel {
         if (!borrowed) {
             return;
         }
-        boolean ok = ScreenReflect.set(borrowedFrom,
-                Integer.valueOf(originalLevel), LEVEL_FIELD);
+        if (borrowedFrom != null) {
+            borrowedFrom.experienceLevel = originalLevel;
+        }
         borrowed = false;
         borrowedFrom = null;
-        if (!ok) {
-            DebugLog.warn("replayui: could not restore the viewer's experience level");
-        }
     }
 
     /**

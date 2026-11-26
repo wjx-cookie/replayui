@@ -6,6 +6,7 @@ import com.replayui.ReplayUIKeybinds;
 import com.replayui.playback.PlaybackTicker;
 import com.replayui.playback.RecordedXpLevel;
 import com.replayui.record.UiSampler;
+import com.replayui.util.WidgetState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -16,11 +17,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Makes our rebuilt screens read-only.
+ * Keeps container-protocol input out of the replay server.
  *
  * <p>Without this, a click would call {@code handleInventoryMouseClick} and ESC
  * would call {@code closeContainer()} - both sending packets tagged with our
  * synthetic container id to a replay server that has no such menu.
+ *
+ * <p>Only that input is swallowed. Widgets a mod hangs on the same screen are
+ * part of the real replay client, not of the recorded state, so they are left
+ * live: JEI / REI / EMI overlays can be clicked and typed into without a
+ * single mod name appearing in this source. {@link WidgetState} decides the
+ * boundary by the widget's package prefix, never by a class-name list.
  *
  * <p>Recognition is by container id, so it covers screens belonging to any mod,
  * not just vanilla ones.
@@ -69,8 +76,14 @@ public class MixinAbstractContainerScreen {
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true, require = 0)
     private void replayui$blockMouseClicked(double mouseX, double mouseY, int button,
                                             CallbackInfoReturnable<Boolean> cir) {
+        AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
         if (replayui$isOurs()) {
-            cir.setReturnValue(true);
+            // A mod overlay on this screen is real client state, not recorded
+            // state. Let vanilla dispatch to it; slot clicks hit no foreign
+            // widget and keep the read-only guard.
+            if (!WidgetState.foreignWidgetAt(self, mouseX, mouseY)) {
+                cir.setReturnValue(true);
+            }
             return;
         }
         // Not a rebuilt screen: this is the recording side, and the click is
@@ -82,9 +95,16 @@ public class MixinAbstractContainerScreen {
     @Inject(method = "mouseReleased", at = @At("HEAD"), cancellable = true, require = 0)
     private void replayui$blockMouseReleased(double mouseX, double mouseY, int button,
                                              CallbackInfoReturnable<Boolean> cir) {
+        AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
         if (replayui$isOurs()) {
-            cir.setReturnValue(true);
+            if (!WidgetState.foreignWidgetAt(self, mouseX, mouseY)) {
+                cir.setReturnValue(true);
+            }
+            return;
         }
+        // A drag ends here, and this is where an item is actually PLACED. The
+        // press sample alone cannot know that position, so capture it too.
+        UiSampler.recordReleaseEvent(Minecraft.getInstance(), button);
     }
 
     @Inject(method = "mouseDragged", at = @At("HEAD"), cancellable = true, require = 0)
@@ -92,7 +112,10 @@ public class MixinAbstractContainerScreen {
                                             double dragX, double dragY,
                                             CallbackInfoReturnable<Boolean> cir) {
         if (replayui$isOurs()) {
-            cir.setReturnValue(true);
+            AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
+            if (!WidgetState.foreignWidgetAt(self, mouseX, mouseY)) {
+                cir.setReturnValue(true);
+            }
         }
     }
 
@@ -107,7 +130,10 @@ public class MixinAbstractContainerScreen {
                                              double scrollY,
                                              CallbackInfoReturnable<Boolean> cir) {
         if (replayui$isOurs()) {
-            cir.setReturnValue(true);
+            AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
+            if (!WidgetState.foreignWidgetAt(self, mouseX, mouseY)) {
+                cir.setReturnValue(true);
+            }
         }
     }
 
@@ -142,6 +168,14 @@ public class MixinAbstractContainerScreen {
             return;
         }
 
+        // A mod overlay owns the focus: keyboard input belongs to it. Vanilla
+        // Screen#keyPressed dispatches to the focused widget first, so the
+        // container slot hotkeys below it are never reached in this case.
+        AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
+        if (WidgetState.foreignFocused(self)) {
+            return;
+        }
+
         cir.setReturnValue(true);
     }
 
@@ -155,7 +189,9 @@ public class MixinAbstractContainerScreen {
     @Inject(method = "charTyped", at = @At("HEAD"), cancellable = true, require = 0)
     private void replayui$blockCharTyped(char codePoint, int modifiers,
                                          CallbackInfoReturnable<Boolean> cir) {
-        if (replayui$isOurs()) {
+        if (replayui$isOurs()
+                && !WidgetState.foreignFocused(
+                        (AbstractContainerScreen<?>) (Object) this)) {
             cir.setReturnValue(true);
         }
     }

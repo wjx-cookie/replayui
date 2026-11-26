@@ -7,7 +7,9 @@ import com.replayui.log.DebugLog;
 import com.replayui.util.ScreenReflect;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -71,15 +73,17 @@ public final class SpecialScreens {
         }
         Screen result = ExtendedSupport.buildNonContainer(client, data);
         if (result == null && data.menuTypeId() == UiStateData.CREATIVE_INVENTORY) {
-            result = buildCreative(client, data.extras());
+            result = buildCreative(client, data);
         }
         if (result == null && data.menuTypeId() == UiStateData.LECTERN_SCREEN) {
             result = buildLectern(client, data.extras());
         }
-        // Beacon effects and nested saved-hotbar groups live here too, not only
-        // on the ordinary MenuScreens path.
+        // Beacon effects and recipe-book state live here too, not only on the
+        // ordinary MenuScreens path.
         if (result != null) {
-            ExtendedSupport.applyMenuState(client, result, null, data);
+            AbstractContainerMenu menu = result instanceof AbstractContainerScreen<?> cs
+                    ? cs.getMenu() : null;
+            ExtendedSupport.applyMenuState(client, result, menu, data);
         }
         return result;
     }
@@ -127,16 +131,38 @@ public final class SpecialScreens {
                 + " columns=" + ex.columns());
     }
 
-    private static Screen buildCreative(Minecraft client, ScreenExtras ex) {
+    private static Screen buildCreative(Minecraft client, UiStateData data) {
         Class<?> cls = ScreenReflect.find(CREATIVE_NAMES);
-        if (cls == null) {
+        if (cls == null || client == null || client.player == null) {
             DebugLog.verbose("creative screen class not found - skipping");
             return null;
         }
+        ScreenExtras ex = data.extras() == null ? ScreenExtras.EMPTY : data.extras();
         Object player = client.player;
+
+        // In a production launch every mapped field / method name is
+        // intermediary, so name-based lookup misses. Resolve by TYPE first.
+        Class<?> listenerClass = ScreenReflect.find(
+                "net.minecraft.client.multiplayer.ClientPacketListener");
+        Object connection = listenerClass == null ? null
+                : ScreenReflect.getByType(player, listenerClass);
+        if (connection == null) {
+            connection = ScreenReflect.get(player, "connection", "clientPacketListener");
+        }
+        Class<?> flagsClass = ScreenReflect.find(
+                "net.minecraft.world.flag.FeatureFlagSet");
+        Object flags = flagsClass == null ? null
+                : ScreenReflect.callReturning(connection, flagsClass);
+        if (flags == null) {
+            flags = ScreenReflect.call(connection, "enabledFeatures", "getEnabledFeatures");
+        }
+        Class<?> inventoryClass = ScreenReflect.find(
+                "net.minecraft.world.entity.player.Inventory");
         Object inventory = ScreenReflect.call(player, "getInventory", "getInventoryMenu");
-        Object connection = ScreenReflect.get(player, "connection");
-        Object flags = ScreenReflect.call(connection, "enabledFeatures", "getEnabledFeatures");
+        if (inventory == null && inventoryClass != null) {
+            inventory = ScreenReflect.getByType(player, inventoryClass);
+        }
+
         // construct() walks every declared constructor and fills each parameter
         // by type from this pool, so extra harmless values only widen coverage.
         Object screen = ScreenReflect.construct(cls, player, flags,
@@ -145,6 +171,17 @@ public final class SpecialScreens {
         if (!(screen instanceof Screen)) {
             DebugLog.verbose("creative screen could not be constructed - skipping");
             return null;
+        }
+        // The vanilla constructor builds its menu from the VIEWER's inventory.
+        // Load the recorded slots so the panel shows the recorded player's
+        // items instead of whoever is watching the replay.
+        if (screen instanceof AbstractContainerScreen<?> cs) {
+            AbstractContainerMenu menu = cs.getMenu();
+            if (menu != null && !data.items().isEmpty()
+                    && menu.slots.size() == data.items().size()) {
+                ContainerScreenBuilder.fillMenu(menu, data.items(), data.carried(),
+                        data.dataSlots());
+            }
         }
         applyCreativeState((Screen) screen, ex);
         return (Screen) screen;

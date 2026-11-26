@@ -103,12 +103,27 @@ public final class MenuExtrasReader {
             offers = readOffers(menu);
         }
         if (isA(menu, ANVIL_MENU, "AnvilMenu")) {
-            renameText = readString(menu, new String[]{"itemName", "name", "f_39047_"},
+            renameText = readString(menu, new String[]{"itemName", "name"},
                     new String[]{"getItemName"});
+            if (renameText.isEmpty()) {
+                Object shaped = ScreenReflect.getByType(menu, String.class);
+                renameText = shaped instanceof String ? (String) shaped : "";
+            }
         }
         if (isA(menu, ENCHANT_MENU, "EnchantmentMenu")) {
-            enchantClues = readIntArray(menu, new String[]{"enchantClue", "enchantClues", "f_39421_"});
-            enchantLevels = readIntArray(menu, new String[]{"levelClue", "levelClues", "f_39422_"});
+            enchantClues = readIntArray(menu, new String[]{"enchantClue", "enchantClues"});
+            enchantLevels = readIntArray(menu, new String[]{"levelClue", "levelClues"});
+            if (enchantClues.length == 0 || enchantLevels.length == 0) {
+                List<Object> arrays = ScreenReflect.fieldsByType(menu, int[].class);
+                if (enchantClues.length == 0 && arrays.size() > 0
+                        && arrays.get(0) instanceof int[]) {
+                    enchantClues = ((int[]) arrays.get(0)).clone();
+                }
+                if (enchantLevels.length == 0 && arrays.size() > 1
+                        && arrays.get(1) instanceof int[]) {
+                    enchantLevels = ((int[]) arrays.get(1)).clone();
+                }
+            }
         }
 
         // Screen-side state. The screen instance used to be passed in but
@@ -152,9 +167,14 @@ public final class MenuExtrasReader {
         if (isAny(menu, RECIPE_MENU_HINTS)) {
             recipeIndex = readInt(menu,
                     new String[]{"selectedRecipeIndex", "selectedRecipe", "recipeIndex",
-                            "selectedIndex", "f_39761_"},
+                            "selectedIndex"},
                     new String[]{"getSelectedRecipeIndex", "getSelectedRecipe"});
-            if (recipeIndex < 0) { recipeIndex = -1; }
+            if (recipeIndex < 0) {
+                List<Object> shaped = ScreenReflect.fieldsByType(menu, int.class);
+                Object first = shaped.isEmpty() ? null : shaped.get(0);
+                recipeIndex = first instanceof Number
+                        ? ((Number) first).intValue() : -1;
+            }
         }
 
         // Recorded for the greyed-out "not enough levels" state on the
@@ -162,8 +182,9 @@ public final class MenuExtrasReader {
         // playback side borrows it for one render call in RecordedXpLevel and
         // restores it immediately, so no real entity keeps a foreign value.
         if (client != null && client.player != null) {
-            experienceLevel = readInt(client.player,
-                    new String[]{"experienceLevel", "f_36046_"}, new String[0]);
+            // Compile-time field reference: Loom remaps it, unlike a string.
+            // No mapping name, no reflection, and javac verifies it exists.
+            experienceLevel = client.player.experienceLevel;
         }
 
         if (!reportOnce) {
@@ -204,7 +225,12 @@ public final class MenuExtrasReader {
     }
 
     private static List<MerchantOfferData> readOffers(AbstractContainerMenu menu) {
-        Object offers = ScreenReflect.call(menu, "getOffers", "method_17386");
+        Object offers = ScreenReflect.call(menu, "getOffers");
+        if (offers == null) {
+            // Production mappings rename the method. Find it by shape instead:
+            // the only no-arg method on a merchant menu returning an Iterable.
+            offers = ScreenReflect.callReturningAssignable(menu, Iterable.class);
+        }
         if (!(offers instanceof Iterable<?> iterable)) {
             return Collections.emptyList();
         }
@@ -221,32 +247,43 @@ public final class MenuExtrasReader {
     }
 
     private static MerchantOfferData readOffer(Object offer) {
+        // Production mappings rename every field. Names above are tried first
+        // (dev workspace); when they all miss, fall back to the field SHAPE:
+        // a MerchantOffer carries three ItemStack fields in declaration order,
+        // then its int fields, then a float multiplier. No name, no number.
+        List<Object> stacks = ScreenReflect.fieldsByType(offer, ItemStack.class);
+        ItemStack shapeA = at(stacks, 0, ItemStack.EMPTY);
+        ItemStack shapeB = at(stacks, 1, ItemStack.EMPTY);
+        ItemStack shapeR = at(stacks, 2, ItemStack.EMPTY);
+        List<Object> ints = ScreenReflect.fieldsByType(offer, int.class);
+        List<Object> floats = ScreenReflect.fieldsByType(offer, float.class);
         ItemStack costA = readStack(offer,
-                new String[]{"baseCostA", "costA", "itemCostA", "f_45303_"},
-                new String[]{"getBaseCostA", "getCostA", "method_17962"});
+                new String[]{"baseCostA", "costA", "itemCostA"},
+                new String[]{"getBaseCostA", "getCostA"}, shapeA);
         ItemStack costB = readStack(offer,
-                new String[]{"costB", "itemCostB", "f_45305_"},
-                new String[]{"getCostB", "method_17964"});
+                new String[]{"costB", "itemCostB"},
+                new String[]{"getCostB"}, shapeB);
         ItemStack result = readStack(offer,
-                new String[]{"result", "resultStack", "f_45306_"},
-                new String[]{"getResult", "method_17965"});
-        int uses = readInt(offer, new String[]{"uses", "f_45307_"}, new String[]{"getUses"});
-        int maxUses = readInt(offer, new String[]{"maxUses", "f_45308_"}, new String[]{"getMaxUses"});
-        int xp = readInt(offer, new String[]{"xp", "f_45309_"}, new String[]{"getXp"});
-        int demand = readInt(offer, new String[]{"demand", "f_45310_"}, new String[]{"getDemand"});
+                new String[]{"result", "resultStack"},
+                new String[]{"getResult"}, shapeR);
+        int uses = readInt(offer, new String[]{"uses"}, new String[]{"getUses"}, ints, 0);
+        int maxUses = readInt(offer, new String[]{"maxUses"}, new String[]{"getMaxUses"}, ints, 1);
+        int xp = readInt(offer, new String[]{"xp"}, new String[]{"getXp"}, ints, 2);
+        int demand = readInt(offer, new String[]{"demand"}, new String[]{"getDemand"}, ints, 3);
         int specialPrice = readInt(offer,
-                new String[]{"specialPriceDiff", "specialPrice", "f_45311_"},
-                new String[]{"getSpecialPriceDiff"});
+                new String[]{"specialPriceDiff", "specialPrice"},
+                new String[]{"getSpecialPriceDiff"}, ints, 4);
         float multiplier = readFloat(offer,
-                new String[]{"priceMultiplier", "f_45312_"},
-                new String[]{"getPriceMultiplier"});
+                new String[]{"priceMultiplier"},
+                new String[]{"getPriceMultiplier"}, floats);
         return new MerchantOfferData(costA, costB, result, uses, maxUses, xp,
                 demand, specialPrice, multiplier);
     }
 
-    private static ItemStack readStack(Object target, String[] fields, String[] getters) {
+    private static ItemStack readStack(Object target, String[] fields, String[] getters,
+                                       ItemStack fallback) {
         Object v = first(target, fields, getters);
-        return v instanceof ItemStack ? (ItemStack) v : ItemStack.EMPTY;
+        return v instanceof ItemStack ? (ItemStack) v : fallback;
     }
 
     private static String readString(Object target, String[] fields, String[] getters) {
@@ -255,8 +292,15 @@ public final class MenuExtrasReader {
     }
 
     private static int readInt(Object target, String[] fields, String[] getters) {
+        return readInt(target, fields, getters, null, -1);
+    }
+
+    private static int readInt(Object target, String[] fields, String[] getters,
+                               List<Object> shaped, int index) {
         Object v = first(target, fields, getters);
-        return v instanceof Number ? ((Number) v).intValue() : 0;
+        if (v instanceof Number) { return ((Number) v).intValue(); }
+        if (shaped == null) { return 0; }
+        return at(shaped, index, Integer.valueOf(0)).intValue();
     }
 
     private static int[] readIntArray(Object target, String[] fields) {
@@ -264,9 +308,17 @@ public final class MenuExtrasReader {
         return v instanceof int[] ? ((int[]) v).clone() : new int[0];
     }
 
-    private static float readFloat(Object target, String[] fields, String[] getters) {
+    private static float readFloat(Object target, String[] fields, String[] getters,
+                                   List<Object> shaped) {
         Object v = first(target, fields, getters);
-        return v instanceof Number ? ((Number) v).floatValue() : 0.0f;
+        if (v instanceof Number) { return ((Number) v).floatValue(); }
+        return at(shaped, 0, Float.valueOf(0.0f)).floatValue();
+    }
+
+    private static <T> T at(List<Object> values, int index, T fallback) {
+        if (index < 0 || index >= values.size()) { return fallback; }
+        Object v = values.get(index);
+        return fallback.getClass().isInstance(v) ? (T) v : fallback;
     }
 
     /** Fields first, then no-arg getters - both mapping styles are seen. */

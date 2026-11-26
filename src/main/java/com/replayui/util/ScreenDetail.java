@@ -45,11 +45,39 @@ public final class ScreenDetail {
     private static final int MAX_CREATIVE_CHARS = 16000;
     private static final int MAX_TEXT_VALUE = 4096;
 
+    private static final String[] CREATIVE_NAMES = {
+            "net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen"};
+
+    /** Resolved through ScreenReflect.find, so this also works on a remapped
+     *  production launch where the class is named class_XXXX. */
+    private static final String[] RECIPE_BOOK_CLASS = {
+            "net.minecraft.client.gui.screens.recipebook.RecipeBookComponent"};
+    private static final String[] EDIT_BOX_CLASS = {
+            "net.minecraft.client.gui.components.EditBox"};
+
+    /** Recipe-book booleans are declared in this order: input guard, visible,
+     *  widthTooNarrow. Index 1 is the open/closed flag; both sides use the
+     *  same shape, so no mapping name is needed. */
+    private static final int RECIPE_VISIBLE_BOOL_INDEX = 1;
+
+    /** getName() is class_XXX in production; resolve the class instead. */
+    private static boolean isCreative(Screen screen) {
+        return ScreenReflect.isInstance(ScreenReflect.find(CREATIVE_NAMES), screen);
+    }
+
     private static boolean reported = false;
 
     /** Viewer's own creative item list, restored on teardown. */
     private static List<Object> creativeTarget;
     private static List<ItemStack> creativeBackup;
+
+    /**
+     * Last recipe-book open state applied to each rebuilt screen. Weak keys:
+     * a screen that is gone is collected with its entry. Used only as a
+     * fallback when the live field cannot be read back.
+     */
+    private static final java.util.Map<Screen, Boolean> appliedRecipeOpen =
+            new java.util.WeakHashMap<Screen, Boolean>();
 
     private ScreenDetail() {
     }
@@ -86,12 +114,19 @@ public final class ScreenDetail {
         Boolean open = firstBoolean(book,
                 "isVisible", "isOpen", "isRecipeBookVisible", "isShown");
         if (open == null) {
-            open = boolOf(ScreenReflect.get(book, "visible", "isVisible", "open", "widthTooNarrow"));
+            // widthTooNarrow is deliberately NOT a candidate here - reading
+            // it would report the window shape as the open/closed state.
+            open = boolOf(ScreenReflect.get(book,
+                    "visible", "isVisible", "open", "isOpen"));
+        }
+        if (open == null) {
+            open = ScreenReflect.booleanFieldAt(book, RECIPE_VISIBLE_BOOL_INDEX);
         }
         putTri(text, NonContainerDetail.T_RECIPE_OPEN, open);
 
         Object tab = firstObject(book,
-                "getCurrentTab", "getSelectedTab", "currentTab", "selectedTab", "activeTab");
+                "getCurrentTab", "getSelectedTab", "currentTab",
+                "selectedTab", "activeTab");
         put(text, NonContainerDetail.T_RECIPE_TAB, nameOf(tab));
         put(numbers, NonContainerDetail.N_RECIPE_TAB_ORD, ordinalOf(tab));
 
@@ -101,7 +136,13 @@ public final class ScreenDetail {
         put(text, NonContainerDetail.T_RECIPE_TYPE, nameOf(type));
         put(numbers, NonContainerDetail.N_RECIPE_TYPE_ORD, ordinalOf(type));
 
-        Object search = ScreenReflect.get(book, "searchBox", "search", "searchField");
+        // By-type lookup finds the search box without any mapping name.
+        Object search = ScreenReflect.get(book,
+                "searchBox", "search", "searchField");
+        if (search == null) {
+            Class<?> edit = ScreenReflect.find(EDIT_BOX_CLASS);
+            if (edit != null) { search = ScreenReflect.getByType(book, edit); }
+        }
         if (search == null) { search = ScreenReflect.get(screen, "searchBox", "search"); }
         put(text, NonContainerDetail.T_RECIPE_SEARCH, editValue(search));
 
@@ -120,6 +161,14 @@ public final class ScreenDetail {
         if (book == null) {
             book = ScreenReflect.call(screen,
                     "getRecipeBookComponent", "getRecipeBook", "recipeBook");
+        }
+        if (book == null) {
+            // On a remapped production launch the field is field_XXXX and the
+            // getter is method_XXXX. The TYPE is stable, so find the class
+            // (ScreenReflect.find maps it to intermediary) and pick the field
+            // by its declared type instead of by name.
+            Class<?> cls = ScreenReflect.find(RECIPE_BOOK_CLASS);
+            if (cls != null) { book = ScreenReflect.getByType(screen, cls); }
         }
         return book;
     }
@@ -220,7 +269,7 @@ public final class ScreenDetail {
     // ---- creative visible items ------------------------------------------
 
     private static void readCreativeItems(Screen screen, List<String> text, int[] numbers) {
-        if (!screen.getClass().getName().contains("CreativeModeInventoryScreen")) { return; }
+        if (!isCreative(screen)) { return; }
         List<?> list = findItemList(screen);
         if (list == null) { return; }
         StringBuilder b = new StringBuilder();
@@ -272,16 +321,43 @@ public final class ScreenDetail {
         if (book == null) { return false; }
         boolean ok = false;
         Boolean open = tri(ex.textAt(NonContainerDetail.T_RECIPE_OPEN));
+        boolean layoutDirty = false;
         if (open != null) {
-            ok |= ScreenReflect.set(book, open, "visible", "isVisible", "open", "isOpen");
-            ok |= ScreenReflect.set(screen, open, "recipeBookOpen", "isRecipeBookOpen");
-            ok |= ScreenReflect.callWith(book, new Class<?>[]{boolean.class},
-                    new Object[]{open}, "setVisible", "setOpen", "show", "hide") != null;
+            // A recorded "open=1" is present on EVERY sample while the book is
+            // up. ScreenReflect.set() reports success even when the value did
+            // not change, so gating on "wrote" would re-run init() on every
+            // content refresh - including the one triggered by typing in the
+            // search box. init() calls clearWidgets() and rebuilds the EditBox,
+            // which would wipe the very text we just set. Compare the live
+            // value first; only a real flip counts as a layout change.
+            Boolean current = recipeVisible(book);
+            Boolean previous = appliedRecipeOpen.get(screen);
+            boolean changed = current != null
+                    ? !current.equals(open)
+                    : (previous == null || !previous.equals(open));
+            appliedRecipeOpen.put(screen, open);
+
+            if (changed) {
+                boolean wrote = ScreenReflect.set(book, open,
+                        "visible", "isVisible", "open", "isOpen");
+                wrote |= ScreenReflect.set(screen, open,
+                        "recipeBookOpen", "isRecipeBookOpen");
+                wrote |= ScreenReflect.callWith(book,
+                        new Class<?>[]{boolean.class}, new Object[]{open},
+                        "setVisible", "setOpen") != null;
+                if (!wrote) {
+                    wrote = ScreenReflect.setBooleanFieldAt(book,
+                            RECIPE_VISIBLE_BOOL_INDEX, open.booleanValue());
+                }
+                ok |= wrote;
+                layoutDirty = wrote;
+            }
         }
         String tab = ex.textAt(NonContainerDetail.T_RECIPE_TAB);
         int tabOrd = ex.numberAt(NonContainerDetail.N_RECIPE_TAB_ORD);
         if (!tab.isEmpty()) {
-            ok |= ScreenReflect.set(book, tab, "currentTab", "selectedTab", "activeTab");
+            ok |= ScreenReflect.set(book, tab, "currentTab",
+                    "selectedTab", "activeTab");
         }
         if (tabOrd > 0) {
             ok |= ScreenReflect.set(book, Integer.valueOf(tabOrd - 1),
@@ -298,7 +374,12 @@ public final class ScreenDetail {
         }
         String search = ex.textAt(NonContainerDetail.T_RECIPE_SEARCH);
         if (!search.isEmpty()) {
-            Object box = ScreenReflect.get(book, "searchBox", "search", "searchField");
+            Object box = ScreenReflect.get(book,
+                    "searchBox", "search", "searchField");
+            if (box == null) {
+                Class<?> edit = ScreenReflect.find(EDIT_BOX_CLASS);
+                if (edit != null) { box = ScreenReflect.getByType(book, edit); }
+            }
             if (box == null) { box = ScreenReflect.get(screen, "searchBox", "search"); }
             ok |= ScreenReflect.callWith(box, new Class<?>[]{String.class},
                     new Object[]{search}, "setValue", "setText") != null;
@@ -308,7 +389,18 @@ public final class ScreenDetail {
             ok |= ScreenReflect.set(book, filter, "filtering", "onlyCraftable",
                     "craftableFilter", "isFilteringCraftable");
         }
-        ScreenReflect.call(book, "updateCollections", "updateTabs", "refresh", "initVisuals");
+        // Safe on every refresh: these only recompute the recipe collections.
+        // initVisuals() is deliberately NOT here - it recreates the widgets.
+        ScreenReflect.call(book, "updateCollections", "updateTabs", "refresh");
+        // Flipping `visible` on a screen that was already initialised is not
+        // enough: AbstractRecipeBookScreen.init() is what repositions the
+        // panel and re-adds the recipe-book widgets. Best effort only: a
+        // miss just leaves the panel at its default position.
+        if (layoutDirty) {
+            ScreenReflect.call(book, "initVisuals");
+            ScreenReflect.call(screen, "init",
+                    "rebuildWidgets", "clearAndInit");
+        }
         return ok;
     }
 
@@ -378,6 +470,7 @@ public final class ScreenDetail {
     // ---- creative visible items, with viewer-data restore ----------------
 
     private static boolean applyCreativeItems(Screen screen, ExtendedState ex) {
+        if (!isCreative(screen)) { return false; }
         String packed = ex.textAt(NonContainerDetail.T_CREATIVE_ITEMS);
         if (packed.isEmpty()) { return false; }
         List<?> list = findItemList(screen);
@@ -420,6 +513,7 @@ public final class ScreenDetail {
         }
         creativeTarget = null;
         creativeBackup = null;
+        appliedRecipeOpen.clear();
     }
 
     private static List<?> findItemList(Screen screen) {
@@ -569,6 +663,20 @@ public final class ScreenDetail {
             if (!p.isEmpty()) { out.add(p); }
         }
         return out;
+    }
+
+    /**
+     * Read back the SAME field the write path targets, in the SAME candidate
+     * order, so the comparison can never disagree with the write. The boolean
+     * index fallback is the same one too.
+     */
+    private static Boolean recipeVisible(Object book) {
+        Boolean v = boolOf(ScreenReflect.get(book,
+                "visible", "isVisible", "open", "isOpen"));
+        if (v == null) {
+            v = ScreenReflect.booleanFieldAt(book, RECIPE_VISIBLE_BOOL_INDEX);
+        }
+        return v;
     }
 
     private static String at(List<String> text, int i) {

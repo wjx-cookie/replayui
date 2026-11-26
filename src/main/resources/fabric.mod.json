@@ -15,7 +15,7 @@
   "environment": "client",
   "entrypoints": {
     "main": ["com.replayui.ReplayUI"],
-    "client": ["com.replayui.ReplayUI"],
+    "client": ["com.replayui.ReplayUI", "com.replayui.test.TestUiDriver"],
     "modmenu": ["com.replayui.compat.ModMenuIntegration"]
   },
   "mixins": ["replayui.mixins.json"],

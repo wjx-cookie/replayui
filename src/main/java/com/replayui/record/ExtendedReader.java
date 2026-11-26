@@ -91,6 +91,14 @@ public final class ExtendedReader {
             "net.minecraft.client.gui.screens.inventory.CommandBlockEditScreen"};
     private static final String[] STRUCTURE_BLOCK = {
             "net.minecraft.client.gui.screens.inventory.StructureBlockEditScreen"};
+    /** 1.21.1: net.minecraft.client.gui.screens.debug.GameModeSwitcherScreen
+     *  (intermediary class_5289). The second spelling covers Yarn-style trees. */
+    private static final String[] GAMEMODE_SWITCHER = {
+            "net.minecraft.client.gui.screens.debug.GameModeSwitcherScreen",
+            "net.minecraft.client.gui.screen.GameModeSwitcherScreen"};
+
+    private static final String[] FALLBACK_LABELS = {
+            "Creative", "Survival", "Adventure", "Spectator"};
 
     private static boolean reported = false;
 
@@ -108,17 +116,25 @@ public final class ExtendedReader {
         int[] numbers = new int[NUMBER_COUNT];
         List<String> pages = new ArrayList<String>();
 
-        readBook(screen, kind, text, numbers, pages);
-        readSign(screen, kind, text, numbers);
-        readCommandBlock(screen, kind, text, numbers);
-        readStructureBlock(screen, kind, text, numbers);
-        readBlockPos(screen, text);
-        // Caret / selection, sign focus, mirror+rotation, command suggestions
-        // and history. Fills the trailing text/number slots only.
-        NonContainerDetail.read(screen, kind, text, numbers);
-        // Signed book / waxed sign / command output / include-entities. Also
-        // fills only trailing slots, so an older reader simply skips them.
-        com.replayui.util.ScreenDetail.readNonContainer(screen, kind, text, numbers);
+        // The F3+F4 switcher has no block entity, no book and no sign fields.
+        // Running the readers below on it would only waste work and could pick
+        // up unrelated widgets, so it takes its own short path.
+        int[] modeSlots = new int[0];
+        if (kind == 6) {
+            modeSlots = readGameModeSwitcher(screen, pages);
+        } else {
+            readBook(screen, kind, text, numbers, pages);
+            readSign(screen, kind, text, numbers);
+            readCommandBlock(screen, kind, text, numbers);
+            readStructureBlock(screen, kind, text, numbers);
+            readBlockPos(screen, text);
+            // Caret / selection, sign focus, mirror+rotation, command suggestions
+            // and history. Fills the trailing text/number slots only.
+            NonContainerDetail.read(screen, kind, text, numbers);
+            // Signed book / waxed sign / command output / include-entities. Also
+            // fills only trailing slots, so an older reader simply skips them.
+            com.replayui.util.ScreenDetail.readNonContainer(screen, kind, text, numbers);
+        }
 
         double rawX = 0.0, rawY = 0.0;
         try {
@@ -141,15 +157,74 @@ public final class ExtendedReader {
                     + " class=" + screen.getClass().getName());
         }
 
-        int[] beacon = readBeacon(client, null, null, text);
+        int[] beacon = kind == 6 ? new int[]{-1, -1}
+                : readBeacon(client, null, null, text);
         ExtendedState ext = new ExtendedState(kind, text, numbers,
                 skinValue(client), skinSignature(client), skinModel(client),
                 beacon[0], beacon[1], readHotbarPresets(client), pages);
         ScreenExtras extras = withExtended(ScreenExtras.EMPTY, ext);
         return new UiStateData(ownerUuid, true, kindToMarker(kind),
                 screen.getTitle(), Collections.<ItemStack>emptyList(),
-                ItemStack.EMPTY, 0, rawX, rawY, null, new int[0],
+                ItemStack.EMPTY, 0, rawX, rawY, null, modeSlots,
                 winW, winH, extras, UiStateData.EVENT_NONE);
+    }
+
+    /**
+     * F3+F4 switcher. Its selected entry is an enum with four constants and its
+     * four visible labels live on the slot widgets. Field NAMES are unmapped in
+     * production, so both are found by shape as a fallback: a non-static enum
+     * field with four constants, and a List field with four elements.
+     *
+     * <p>The first rich slot carries "sel:N" as well as the dataSlots entry.
+     * That duplication is deliberate: UiStateData.sameAs compares dataSlots,
+     * while PlaybackTicker.contentsChanged compares extras - so a change of
+     * selection both gets written and actually refreshes the open screen.
+     */
+    private static int[] readGameModeSwitcher(Screen screen, List<String> pages) {
+        int selected = 0;
+        Object hovered = ScreenReflect.get(screen, "currentlyHovered",
+                "hovered", "selected", "currentGameMode", "gameMode");
+        if (hovered instanceof Enum<?>) {
+            selected = ((Enum<?>) hovered).ordinal();
+        } else {
+            Object byShape = ScreenReflect.firstEnumField(screen, 4);
+            if (byShape instanceof Enum<?>) {
+                selected = ((Enum<?>) byShape).ordinal();
+            }
+        }
+
+        List<?> slots = null;
+        Object named = ScreenReflect.get(screen, "slots",
+                "gameModeButtons", "buttons", "gameModes");
+        if (named instanceof List<?>) { slots = (List<?>) named; }
+        if (slots == null || slots.size() != 4) {
+            Object byShape = ScreenReflect.firstListField(screen, 4);
+            if (byShape instanceof List<?>) { slots = (List<?>) byShape; }
+        }
+
+        pages.add("sel:" + selected);
+        int labels = 0;
+        if (slots != null) {
+            for (Object slot : slots) {
+                Object msg = ScreenReflect.callReturning(slot, Component.class);
+                String s = msg instanceof Component
+                        ? ((Component) msg).getString() : "";
+                if (s.isEmpty()) {
+                    // Fall back to the vanilla order when a mapping hides
+                    // getMessage(). The recorded ordinal still picks the right
+                    // slot, so only the caption can be slightly off.
+                    s = FALLBACK_LABELS[Math.min(labels, 3)];
+                }
+                pages.add(s);
+                labels++;
+                if (labels >= 4) { break; }
+            }
+        }
+        while (labels < 4) {
+            pages.add(FALLBACK_LABELS[labels]);
+            labels++;
+        }
+        return new int[]{selected};
     }
 
     private static int nonContainerKind(Screen screen) {
@@ -158,6 +233,7 @@ public final class ExtendedReader {
         if (ScreenReflect.isInstance(ScreenReflect.find(SIGN_EDIT), screen)) { return 3; }
         if (ScreenReflect.isInstance(ScreenReflect.find(COMMAND_BLOCK), screen)) { return 4; }
         if (ScreenReflect.isInstance(ScreenReflect.find(STRUCTURE_BLOCK), screen)) { return 5; }
+        if (ScreenReflect.isInstance(ScreenReflect.find(GAMEMODE_SWITCHER), screen)) { return 6; }
         return 0;
     }
 
@@ -168,6 +244,7 @@ public final class ExtendedReader {
             case 3: return UiStateData.SIGN_EDIT_SCREEN;
             case 4: return UiStateData.COMMAND_BLOCK_SCREEN;
             case 5: return UiStateData.STRUCTURE_BLOCK_SCREEN;
+            case 6: return UiStateData.GAMEMODE_SWITCHER_SCREEN;
             default: return 0;
         }
     }
@@ -179,6 +256,7 @@ public final class ExtendedReader {
             case UiStateData.SIGN_EDIT_SCREEN: return 3;
             case UiStateData.COMMAND_BLOCK_SCREEN: return 4;
             case UiStateData.STRUCTURE_BLOCK_SCREEN: return 5;
+            case UiStateData.GAMEMODE_SWITCHER_SCREEN: return 6;
             default: return 0;
         }
     }
@@ -203,6 +281,19 @@ public final class ExtendedReader {
         // fields, not menu fields; this is the only place we still have the
         // live Screen instance on the ordinary recording path.
         com.replayui.util.ScreenDetail.read(screen, text, numbers);
+
+        // Widget text and the MenuType registry key. Both ride in trailing
+        // slots, so an older sample has neither: playback then goes straight
+        // to byId() and widget restore is a complete no-op.
+        String widgetDump = com.replayui.util.WidgetState.capture(screen);
+        if (!widgetDump.isEmpty()) {
+            putText(text, NonContainerDetail.T_WIDGET_STATE, widgetDump);
+        }
+        String key = menuTypeKey(menu);
+        if (!key.isEmpty()) {
+            putText(text, NonContainerDetail.T_MENU_KEY, key);
+        }
+
         ExtendedState ext = new ExtendedState(0, text, numbers,
                 skinValue(client), skinSignature(client), skinModel(client),
                 beacon[0], beacon[1], readHotbarPresets(client), rich);
@@ -230,6 +321,29 @@ public final class ExtendedReader {
                 b.merchantScroll(), b.selectedOffer(), b.merchantLevel(),
                 b.merchantXp(), b.recipeIndex(), b.anvilFocus(),
                 b.anvilCursor(), ext == null ? ExtendedState.EMPTY : ext);
+    }
+
+    /**
+     * Stable registry key for a real MenuType. The numeric id recorded in
+     * {@code menuTypeId} shifts whenever the installed set of modded menus
+     * changes; the key does not. Best effort only - a missing key simply leaves
+     * playback on the original byId() path. Swallows everything so a sampling
+     * failure can never disable UI capture for the whole session.
+     */
+    private static String menuTypeKey(AbstractContainerMenu menu) {
+        if (menu == null) { return ""; }
+        try {
+            Object mt = ((com.replayui.mixin.MenuTypeAccessor) menu)
+                    .replayui$getMenuType();
+            if (mt instanceof net.minecraft.world.inventory.MenuType<?>) {
+                net.minecraft.resources.ResourceLocation key =
+                        net.minecraft.core.registries.BuiltInRegistries.MENU.getKey(
+                                (net.minecraft.world.inventory.MenuType<?>) mt);
+                return key == null ? "" : key.toString();
+            }
+        } catch (Throwable ignored) {
+        }
+        return "";
     }
 
     // ---- skin -------------------------------------------------------------

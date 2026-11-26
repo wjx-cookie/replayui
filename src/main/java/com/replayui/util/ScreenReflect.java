@@ -3,6 +3,7 @@ package com.replayui.util;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,25 +34,265 @@ public final class ScreenReflect {
     private ScreenReflect() {
     }
 
-    /** First class that can be resolved, or null. */
+    /**
+     * First class that can be resolved, or null.
+     *
+     * <p>A string class name is NOT remapped by Loom: a Mojang-mapped name like
+     * {@code CreativeModeInventoryScreen} resolves in a dev workspace but is
+     * {@code class_XXX} in a production launch. Every reflective screen path
+     * therefore silently failed on a real install. Ask Fabric Loader's mapping
+     * resolver for the intermediary name as a second candidate. Both are tried,
+     * so dev and production work with the same code.
+     */
     public static Class<?> find(String... names) {
         for (String name : names) {
             if (name == null) { continue; }
             Class<?> cached = CACHE.get(name);
             if (cached != null) { return cached; }
-            try {
-                Class<?> cls = Class.forName(name);
+            Class<?> cls = load(name);
+            if (cls == null) {
+                String mapped = intermediaryName(name);
+                if (mapped != null && !mapped.equals(name)) {
+                    cls = load(mapped);
+                }
+            }
+            if (cls == null && name.indexOf('$') > 0) {
+                // Inner classes: map the outer part, keep the simple inner name.
+                String outer = name.substring(0, name.indexOf('$'));
+                String inner = name.substring(name.indexOf('$'));
+                String mappedOuter = intermediaryName(outer);
+                if (mappedOuter != null) {
+                    cls = load(mappedOuter + inner);
+                }
+            }
+            if (cls != null) {
                 CACHE.put(name, cls);
                 return cls;
-            } catch (Throwable ignored) {
-                // Not present in this version / not loaded yet.
             }
         }
         return null;
     }
 
+    private static Class<?> load(String name) {
+        try {
+            return Class.forName(name);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /** Reflective use of FabricLoader so no compile-time dependency is added. */
+    private static String intermediaryName(String named) {
+        try {
+            Class<?> loaderClass = Class.forName("net.fabricmc.loader.api.FabricLoader");
+            Object loader = loaderClass.getMethod("getInstance").invoke(null);
+            Object resolver = loaderClass.getMethod("getMappingResolver").invoke(loader);
+            Class<?> resolverClass = Class.forName("net.fabricmc.loader.api.MappingResolver");
+            Object mapped = resolverClass
+                    .getMethod("mapClassName", String.class, String.class)
+                    .invoke(resolver, "intermediary", named);
+            return mapped instanceof String ? (String) mapped : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     public static boolean isInstance(Class<?> cls, Object value) {
         return cls != null && value != null && cls.isInstance(value);
+    }
+
+    /**
+     * First field whose declared type is exactly {@code type}. Mapped field
+     * names are {@code field_XXX} in production, so name-based lookup alone
+     * cannot find e.g. the player's connection. Type is stable across mappings.
+     */
+    public static Object getByType(Object target, Class<?> type) {
+        if (target == null || type == null) { return null; }
+        for (Class<?> k = target.getClass(); k != null; k = k.getSuperclass()) {
+            Field[] all;
+            try { all = k.getDeclaredFields(); } catch (Throwable ignored) { continue; }
+            for (Field f : all) {
+                if (f.getType() != type) { continue; }
+                try {
+                    f.setAccessible(true);
+                    return f.get(target);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * All instance fields of exactly {@code type}, in declaration order.
+     *
+     * <p>Mappings rename every field to {@code field_XXX}, but the order and
+     * the types of the fields a value object carries are its shape. Reading
+     * "the third ItemStack field" needs no name at all, so it survives both
+     * a remap and a version bump that keeps the same layout.
+     */
+    public static List<Object> fieldsByType(Object target, Class<?> type) {
+        List<Object> out = new ArrayList<Object>();
+        if (target == null || type == null) { return out; }
+        for (Class<?> k = target.getClass(); k != null && k != Object.class;
+             k = k.getSuperclass()) {
+            Field[] all;
+            try { all = k.getDeclaredFields(); } catch (Throwable ignored) { continue; }
+            for (Field f : all) {
+                if (Modifier.isStatic(f.getModifiers()) || f.getType() != type) { continue; }
+                try {
+                    f.setAccessible(true);
+                    out.add(f.get(target));
+                } catch (Throwable ignored) {
+                    out.add(null);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * First non-static enum field with exactly {@code constantCount} constants.
+     * Mapped field names are {@code field_XXX} in production, but the shape of
+     * a value is stable - the F3+F4 switcher's four GameModeIcon constants are
+     * a good example.
+     */
+    public static Object firstEnumField(Object target, int constantCount) {
+        if (target == null) { return null; }
+        for (Class<?> k = target.getClass(); k != null; k = k.getSuperclass()) {
+            Field[] all;
+            try { all = k.getDeclaredFields(); } catch (Throwable ignored) { continue; }
+            for (Field f : all) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) { continue; }
+                Class<?> t = f.getType();
+                if (!t.isEnum()) { continue; }
+                Object[] cs = t.getEnumConstants();
+                if (cs == null || cs.length != constantCount) { continue; }
+                try {
+                    f.setAccessible(true);
+                    return f.get(target);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    /** First non-static List field containing exactly {@code size} elements. */
+    public static Object firstListField(Object target, int size) {
+        if (target == null) { return null; }
+        for (Class<?> k = target.getClass(); k != null; k = k.getSuperclass()) {
+            Field[] all;
+            try { all = k.getDeclaredFields(); } catch (Throwable ignored) { continue; }
+            for (Field f : all) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) { continue; }
+                if (!List.class.isAssignableFrom(f.getType())) { continue; }
+                try {
+                    f.setAccessible(true);
+                    Object v = f.get(target);
+                    if (v instanceof List<?> && ((List<?>) v).size() == size) { return v; }
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The {@code index}-th non-static boolean field, in declaration order.
+     * Mapping-aware field names are preferred everywhere else; this is the last
+     * resort for a version whose intermediary field numbers differ. Both the
+     * recording and the playback side call this with the SAME index, so even a
+     * wrong guess stays symmetric and cannot desync the wire format.
+     */
+    public static Boolean booleanFieldAt(Object target, int index) {
+        if (target == null || index < 0) { return null; }
+        int seen = 0;
+        for (Class<?> k = target.getClass(); k != null; k = k.getSuperclass()) {
+            Field[] all;
+            try { all = k.getDeclaredFields(); } catch (Throwable ignored) { continue; }
+            for (Field f : all) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) { continue; }
+                if (f.getType() != boolean.class) { continue; }
+                if (seen++ != index) { continue; }
+                try {
+                    f.setAccessible(true);
+                    return Boolean.valueOf(f.getBoolean(target));
+                } catch (Throwable ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    public static boolean setBooleanFieldAt(Object target, int index, boolean value) {
+        if (target == null || index < 0) { return false; }
+        int seen = 0;
+        for (Class<?> k = target.getClass(); k != null; k = k.getSuperclass()) {
+            Field[] all;
+            try { all = k.getDeclaredFields(); } catch (Throwable ignored) { continue; }
+            for (Field f : all) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) { continue; }
+                if (f.getType() != boolean.class) { continue; }
+                if (seen++ != index) { continue; }
+                try {
+                    f.setAccessible(true);
+                    f.setBoolean(target, value);
+                    return true;
+                } catch (Throwable ignored) {
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** First no-arg method whose return type is exactly {@code type}. */
+    public static Object callReturning(Object target, Class<?> type) {
+        if (target == null || type == null) { return null; }
+        for (Class<?> k = target.getClass(); k != null; k = k.getSuperclass()) {
+            Method[] all;
+            try { all = k.getDeclaredMethods(); } catch (Throwable ignored) { continue; }
+            for (Method m : all) {
+                if (m.getParameterCount() != 0 || m.getReturnType() != type) { continue; }
+                try {
+                    m.setAccessible(true);
+                    return m.invoke(target);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * First no-arg method whose return type is assignable to {@code type}.
+     *
+     * <p>Production mappings rename {@code getOffers()} to {@code method_XXXX},
+     * but "the one method on this menu that returns an Iterable of offers" is
+     * a shape, not a name. Used as the fallback when name lookup misses, so a
+     * remap or a version bump cannot silently empty the merchant list.
+     */
+    public static Object callReturningAssignable(Object target, Class<?> type) {
+        if (target == null || type == null) { return null; }
+        for (Class<?> k = target.getClass(); k != null && k != Object.class;
+             k = k.getSuperclass()) {
+            Method[] all;
+            try { all = k.getDeclaredMethods(); } catch (Throwable ignored) { continue; }
+            for (Method m : all) {
+                if (m.getParameterCount() != 0 || Modifier.isStatic(m.getModifiers())) {
+                    continue;
+                }
+                if (!type.isAssignableFrom(m.getReturnType())) { continue; }
+                try {
+                    m.setAccessible(true);
+                    return m.invoke(target);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return null;
     }
 
     /** Read the first field with one of these names, walking superclasses. */
